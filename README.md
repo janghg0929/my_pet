@@ -1,5 +1,5 @@
 ## 소개 Information
-- 바탕화면에 펫을 생성합니다.
+- 바탕화면에 펫을 생성합니다
   
 ---
 
@@ -32,3 +32,4 @@
 
 ## 사용 방법 How to use
 - [이 링크(google drive)](https://drive.google.com/file/d/1Rdu9fnvi_3IkLQwGTE13k-QV5_fbEp85/view?usp=drive_link) 혹은 [이 링크(github releases)](https://github.com/janghg0929/my_pet/releases/tag/download)에서 다운로드 후 실행하시면 됩니다!
+- Esc로 종료할 수 있습니다
