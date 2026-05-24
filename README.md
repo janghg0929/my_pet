@@ -30,4 +30,4 @@
 ---
 
 ## 사용 방법 How to use
-- [이 링크](https://drive.google.com/file/d/1Rdu9fnvi_3IkLQwGTE13k-QV5_fbEp85/view?usp=drive_link)에서 다운로드 후 실행하시면 됩니다!
+- [이 링크(google drive)](https://drive.google.com/file/d/1Rdu9fnvi_3IkLQwGTE13k-QV5_fbEp85/view?usp=drive_link) 혹은 [이 링크(github releases)](https://github.com/janghg0929/my_pet/releases/tag/download)에서 다운로드 후 실행하시면 됩니다!
