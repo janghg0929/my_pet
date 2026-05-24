@@ -7,19 +7,19 @@
 - 쓰다듬기
 - 날리기
 - 외형 변경(캐릭터 우클릭)
-  - 브라우저
+  - 브라우저(Chrome/Microsoft Edge)
     - 돋보기
-    - Internet Explorer(IE)
-  - 디스코드
+    - Internet Explorer 아이콘
+  - Discord
     - 색상 변경
-  - 스팀
+  - Steam
     - 픽셀 하트
-  - 음악(Youtube/Youtube Music/Spotify)
+  - 음악(YouTube/YouTube Music/Spotify)
     - 헤드셋
-  - Visual Studio Code(Vscode)
+  - Visual Studio Code
     - 글리치
 - 색깔 변경
-  - 기본 색(4FC3F7)
+  - 기본 색(#4FC3F7)
   - 사용자 지정 색
 - 자동 업데이트
 
