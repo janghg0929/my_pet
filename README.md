@@ -6,6 +6,7 @@
 ## 기능 Feature
 - 쓰다듬기
 - 날리기
+- 창 위에 올리기
 - 외형 변경(캐릭터 우클릭)
   - 브라우저(Chrome/Microsoft Edge)
     - 돋보기
