@@ -20,8 +20,6 @@
     - 픽셀 하트
   - 음악(YouTube/YouTube Music/Spotify)
     - 헤드셋
-  - Visual Studio Code
-    - 글리치
 - 색깔 변경
   - 기본 색(#4FC3F7)
   - 사용자 지정 색
@@ -30,7 +28,7 @@
 ---
 
 ## 안내 사항 Instructions
-- 이 앱은 windows에서만 실행 가능합니다(아마도?)
+- 이 앱은 windows에서만 실행 가능합니다
 
 ---
 
