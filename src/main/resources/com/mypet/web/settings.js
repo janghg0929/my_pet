@@ -43,6 +43,8 @@
   var PAGE_GROUP = 5; // 페이지 번호를 몇 개씩 묶어서 보여줄지
   var appearancePage = 1;
   var appearanceQuery = "";
+  var listFullHeight = 0; // 외형 5개가 찼을 때 목록 높이 (이 높이로 고정해서 창 크기가 흔들리지 않게)
+  var nativeSearch = false; // 앱 안에서는 Java(Swing) 입력칸이 검색창 자리에 겹쳐진다 (한글 입력 때문)
 
   // 일반 브라우저로 settings.html 을 열었을 때(=Java 연결 없음) 보여줄 예시 데이터
   var DEMO_STATE = {
@@ -106,6 +108,9 @@
     document.getElementById("title").textContent = TITLES[view];
     document.querySelector(".back").hidden = view === "main";
     document.getElementById("appearance-search").hidden = view !== "appearance";
+    if (view === "appearance") {
+      renderAppearanceList(); // 처음 볼 때 목록 높이를 재기 위해 다시 그린다
+    }
     if (stage) {
       if (view === "color") {
         stage.start();
@@ -114,7 +119,40 @@
       }
     }
     fitWindow();
+    reportSearchBox();
   }
+
+  // 앱 안에서는 검색창 자리에 Java 입력칸을 겹쳐 놓는다: 그 자리(좌표/크기)를 Java 에 알려준다
+  function reportSearchBox() {
+    if (!nativeSearch) {
+      return;
+    }
+    var box = document.getElementById("appearance-search");
+    var r = box.getBoundingClientRect();
+    send("searchBox", r.left, r.top, r.width, r.height, !box.hidden, state ? state.petColor : "#4fc3f7");
+  }
+
+  function applySearch(text) {
+    appearanceQuery = normalize(text);
+    appearancePage = 1;
+    renderAppearanceList();
+  }
+
+  // (Java 가 부름) 앱 안: 한글 조합 중인 글자까지 바로 보이도록 Java 입력칸을 쓴다
+  window.bitUseNativeSearch = function () {
+    nativeSearch = true;
+    var box = document.getElementById("appearance-search");
+    box.readOnly = true;
+    box.tabIndex = -1;
+    box.value = "";
+    box.classList.add("native");
+    reportSearchBox();
+  };
+
+  // (Java 가 부름) Java 입력칸에 글자를 칠 때마다 검색
+  window.bitSearch = function (text) {
+    applySearch(text);
+  };
 
   // 검색용 정리: 소문자로 바꾸고 띄어쓰기·구분 기호를 뺀다 ("Google Chrome" → "googlechrome")
   function normalize(text) {
@@ -210,10 +248,6 @@
   function renderPager(totalPages) {
     var pager = document.getElementById("appearance-pager");
     pager.innerHTML = "";
-    pager.hidden = totalPages < 1;
-    if (totalPages < 1) {
-      return;
-    }
     pagerItems(appearancePage, totalPages).forEach(function (item) {
       var button = document.createElement("button");
       button.textContent = item.label;
@@ -238,15 +272,34 @@
     appearancePage = Math.min(Math.max(1, appearancePage), totalPages);
     var list = document.getElementById("appearance-list");
     list.innerHTML = "";
-    found.slice((appearancePage - 1) * PAGE_SIZE, appearancePage * PAGE_SIZE).forEach(function (item) {
+    var shown = found.slice((appearancePage - 1) * PAGE_SIZE, appearancePage * PAGE_SIZE);
+    shown.forEach(function (item) {
       list.appendChild(createOption(item));
     });
-    list.hidden = found.length === 0;
-    document.getElementById("appearance-empty").hidden = found.length > 0;
-    renderPager(found.length === 0 ? 0 : totalPages);
+    if (found.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent = "검색 결과가 없어요";
+      list.appendChild(empty);
+    }
+    fixListHeight(list, shown.length);
+    renderPager(totalPages);
     if (currentView === "appearance") {
       fitWindow();
     }
+  }
+
+  // 목록 높이를 "외형 5개가 찼을 때" 높이로 고정한다 (처음 5개를 그렸을 때 한 번 잰다)
+  function fixListHeight(list, rowCount) {
+    if (!listFullHeight && rowCount > 0 && list.offsetHeight > 0) {
+      var first = list.querySelector(".option");
+      var rowHeight = first ? first.offsetHeight : 0;
+      var style = window.getComputedStyle(list);
+      var frame = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+      // 둘째 줄부터는 위쪽 점선(1px)이 붙는다
+      listFullHeight = rowHeight * PAGE_SIZE + (PAGE_SIZE - 1) + frame;
+    }
+    list.style.minHeight = listFullHeight ? listFullHeight + "px" : "";
   }
 
   function render() {
@@ -280,6 +333,7 @@
     state = newState;
     render();
     fitWindow();
+    reportSearchBox();
   };
 
   document.addEventListener("click", function (event) {
@@ -307,17 +361,16 @@
     stage = new window.BitView.Stage(document.querySelector(".bit-stage"));
   }
   var search = document.getElementById("appearance-search");
+  // 일반 브라우저 미리보기에서는 이 HTML 입력칸을 그대로 쓴다
   search.addEventListener("input", function () {
-    appearanceQuery = normalize(search.value);
-    appearancePage = 1;
-    renderAppearanceList();
+    if (!nativeSearch) {
+      applySearch(search.value);
+    }
   });
   search.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" || event.keyCode === 27) {
+    if (!nativeSearch && (event.key === "Escape" || event.keyCode === 27)) {
       search.value = "";
-      appearanceQuery = "";
-      appearancePage = 1;
-      renderAppearanceList();
+      applySearch("");
     }
   });
   renderAppearanceList();

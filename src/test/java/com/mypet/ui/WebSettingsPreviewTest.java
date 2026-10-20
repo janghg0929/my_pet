@@ -3,6 +3,7 @@ package com.mypet.ui;
 import org.junit.jupiter.api.Test;
 
 import javax.swing.JDialog;
+import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import java.awt.GraphicsEnvironment;
 import java.io.File;
@@ -87,18 +88,33 @@ class WebSettingsPreviewTest {
 		snapshot(settings[0], new File(out, "web-main.png"));
 		settings[0].showViewForPreview("appearance");
 		Thread.sleep(700);
+		System.out.println("appearance heights: content=" + evalScript(settings[0], "window.bitContentHeight()")
+			+ " title=" + evalScript(settings[0], "document.querySelector('.titlebar').offsetHeight")
+			+ " view=" + evalScript(settings[0], "document.querySelector('.view[data-view=\"appearance\"]').offsetHeight")
+			+ " list=" + evalScript(settings[0], "document.getElementById('appearance-list').offsetHeight")
+			+ " minHeight=" + evalScript(settings[0], "document.getElementById('appearance-list').style.minHeight"));
 		snapshot(settings[0], new File(out, "web-appearance.png"));
 
 		// 검색: 한글/영어로 앱 이름이나 외형 이름을 찾는다
-		for (String[] query : new String[][] {{"chrome", "web-search-chrome.png"}, {"크롬", "web-search-krom.png"}, {"없는거", "web-search-none.png"}}) {
-			runScript(settings[0], "var s = document.getElementById('appearance-search'); s.value = '" + query[0] + "';"
-				+ "s.dispatchEvent(new Event('input'));");
-			Thread.sleep(500);
+		// (앱 안에서는 HTML 검색창 자리에 Swing 입력칸이 겹쳐져 있다: 한글 조합 입력 때문)
+		JTextField field = settings[0].searchFieldForPreview();
+		SwingUtilities.invokeAndWait(() -> System.out.println("swing search field visible=" + field.isVisible()
+			+ " bounds=" + field.getBounds() + " / dialog=" + settings[0].dialog().getSize()));
+		for (String[] query : new String[][] {{"chrome", "web-search-chrome.png"}, {"크", "web-search-k.png"}, {"크롬", "web-search-krom.png"},
+			{"없는거", "web-search-none.png"}}) {
+			SwingUtilities.invokeAndWait(() -> field.setText(query[0]));
+			Thread.sleep(600);
 			System.out.println("search '" + query[0] + "' → " + evalScript(settings[0],
-				"Array.prototype.map.call(document.querySelectorAll('#appearance-list .option b'), function (b) { return b.textContent; }).join(', ')"));
+				"Array.prototype.map.call(document.querySelectorAll('#appearance-list .option b'), function (b) { return b.textContent; }).join(', ')")
+				+ " | list height=" + evalScript(settings[0], "document.getElementById('appearance-list').offsetHeight")
+				+ " | dialog=" + settings[0].dialog().getSize());
 			snapshot(settings[0], new File(out, query[1]));
+			if (query[0].equals("크롬")) {
+				printWholeDialog(settings[0], new File(out, "web-search-swing-overlay.png"));
+			}
 		}
-		runScript(settings[0], "var s = document.getElementById('appearance-search'); s.value = ''; s.dispatchEvent(new Event('input'));");
+		SwingUtilities.invokeAndWait(() -> field.setText(""));
+		Thread.sleep(400);
 
 		// 페이지 나누기: 외형이 많아졌을 때(가짜 외형 70개 = 15쪽)를 흉내 내서 3, 8, 13쪽을 찍는다
 		runScript(settings[0], "for (var i = 6; i <= 75; i++) { window.bitAppearances.items.push("
@@ -161,6 +177,21 @@ class WebSettingsPreviewTest {
 			}
 		});
 		done.get(5, TimeUnit.SECONDS);
+	}
+
+	/** Swing 입력칸까지 포함해 창 내용 전체를 그림으로 저장 (WebView 스냅샷에는 Swing 입력칸이 안 찍힌다). */
+	private static void printWholeDialog(WebSettings settings, File file) throws Exception {
+		java.awt.image.BufferedImage[] image = new java.awt.image.BufferedImage[1];
+		SwingUtilities.invokeAndWait(() -> {
+			javax.swing.JRootPane rootPane = settings.dialog().getRootPane();
+			java.awt.image.BufferedImage img = new java.awt.image.BufferedImage(rootPane.getWidth(), rootPane.getHeight(),
+				java.awt.image.BufferedImage.TYPE_INT_RGB);
+			java.awt.Graphics2D g = img.createGraphics();
+			rootPane.printAll(g);
+			g.dispose();
+			image[0] = img;
+		});
+		javax.imageio.ImageIO.write(image[0], "png", file);
 	}
 
 	private static String evalScript(WebSettings settings, String script) throws Exception {

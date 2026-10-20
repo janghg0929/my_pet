@@ -92,6 +92,16 @@ button {
   border-color: var(--pet);
 }
 
+/* 앱 안: 이 자리 위에 Java 입력칸이 겹쳐지므로 HTML 입력칸은 자리만 차지한다 */
+.search.native {
+  color: transparent;
+  pointer-events: none;
+}
+
+.search.native::placeholder {
+  color: transparent;
+}
+
 /* ---------- 비트 (canvas 에 실제 비트 모양을 그린다: settings.js 의 drawBit) ---------- */
 .bit-icon {
   width: 48px;
@@ -277,15 +287,13 @@ button {
   padding-right: var(--shadow);
 }
 
-/* ---------- 외형 검색 결과 없음 ---------- */
+/* ---------- 외형 검색 결과 없음 (목록 상자 안에 표시) ---------- */
 .empty {
-  width: calc(100% - var(--shadow));
   margin: 0;
-  padding: 26px 0;
+  padding: 40px 0;
   text-align: center;
   color: var(--muted);
   font-size: 12px;
-  border: var(--border) dashed #cfc7b8;
 }
 
 /* ---------- 외형 목록 페이지 번호:  < 1 2 [3] 4 5 … > ---------- */
@@ -294,10 +302,6 @@ button {
   justify-content: center;
   gap: 5px;
   margin-top: 12px;
-}
-
-.pager[hidden] {
-  display: none;
 }
 
 .page {
