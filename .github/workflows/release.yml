@@ -76,6 +76,10 @@ jobs:
     if: ${{ always() && needs.windows.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
+      # 릴리스 설명에 넣을 다운로드 안내(.github/release-notes.md)를 가져온다
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -88,4 +92,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "$GITHUB_REPOSITORY" \
             --title "MY_PET $GITHUB_REF_NAME" \
+            --notes-file .github/release-notes.md \
             --generate-notes
