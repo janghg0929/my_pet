@@ -1,10 +1,16 @@
 # v로 시작하는 태그(예: v2.0.1)를 푸시하면 윈도우/맥 패키지와 업데이트용 jar 를 빌드해 GitHub 릴리스로 올린다.
 # 앱은 시작할 때 최신 릴리스를 확인하고 "새 버전이 있습니다. 업데이트할까요?" 를 묻는다.
+# Actions 탭에서 수동 실행(Run workflow)하면 릴리스 없이 빌드만 시험한다.
 name: Release
 
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+
+env:
+  # 태그 실행이면 태그 버전(v2.0.1 → 2.0.1), 수동 실행이면 시험용 버전
+  APP_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.0' }}
 
 permissions:
   contents: write
@@ -13,8 +19,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -24,17 +30,17 @@ jobs:
     needs: test
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
       - name: Package
         shell: pwsh
         run: |
-          $version = "${{ github.ref_name }}".TrimStart('v')
+          $version = "$env:APP_VERSION".TrimStart('v')
           ./scripts/package-windows.ps1 -Version $version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-windows
           path: |
@@ -49,16 +55,16 @@ jobs:
         os: [macos-15, macos-15-intel]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
       - name: Package
         run: |
           chmod +x gradlew scripts/package-macos.sh
-          ./scripts/package-macos.sh "${GITHUB_REF_NAME#v}"
-      - uses: actions/upload-artifact@v4
+          ./scripts/package-macos.sh "${APP_VERSION#v}"
+      - uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.os }}
           path: build/release/MyPet-macos-*.dmg
@@ -66,10 +72,11 @@ jobs:
   release:
     needs: [windows, macos]
     # 맥 빌드 하나가 실패해도 윈도우 + 업데이트 jar 가 있으면 릴리스한다
-    if: ${{ always() && needs.windows.result == 'success' }}
+    # 태그로 실행됐을 때만 릴리스한다 (수동 실행은 빌드 시험용)
+    if: ${{ always() && needs.windows.result == 'success' && startsWith(github.ref, 'refs/tags/v') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
