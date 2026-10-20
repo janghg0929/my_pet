@@ -39,6 +39,8 @@ public final class Constants {
 	public static final int LIMB_SIZE = Math.max(4, BASE_FACE_SIZE / 12); // 팔/다리 기본 크기
 	public static final int LIMB_GAP = 1; // 팔/다리 간격
 	public static final int SIDE_EXTENSION = LIMB_SIZE + LIMB_GAP; // 좌우 확장 폭
+	public static final int BODY_INSET_X = 0; // 몸통 좌우를 줄이는 폭 (서 있을 때 팔과 띄우기)
+	public static final int BODY_INSET_BOTTOM = 0; // 몸통 아래를 줄이는 높이 (서 있을 때 다리와 띄우기)
 	public static final int BOTTOM_EXTENSION = LIMB_SIZE + LIMB_GAP; // 하단 확장 높이
 	public static final int APPEARANCE_EXTRA_MARGIN = 0; // 기본 외형 여유 공간(외형별 추가 여백은 런타임에 적용)
 	public static final double MAGNIFIER_HANDLE_LENGTH = 2.4; // 돋보기 손잡이 길이 배율
@@ -67,7 +69,7 @@ public final class Constants {
 	public static final String UPDATE_JAR_ASSET_NAME = "MyPet.jar"; // 릴리스에 첨부되는 업데이트 jar 이름
 	public static final int UPDATE_CHECK_TIMEOUT_SEC = 8; // 업데이트 체크 타임아웃(초)
 
-	public static final int SETTINGS_DIALOG_FIXED_WIDTH = 320; // 설정 창 고정 너비
+	public static final int SETTINGS_DIALOG_FIXED_WIDTH = 340; // 설정 창 고정 너비
 	public static final int SETTINGS_DIALOG_FIXED_HEIGHT = 450; // 설정 창 고정 높이
 	public static final double COLOR_ERROR_SHAKE_AMPLITUDE = 7.0; // 색상 오류 흔들림 진폭
 	public static final double COLOR_ERROR_SHAKE_SPEED = 0.475; // 색상 오류 흔들림 속도

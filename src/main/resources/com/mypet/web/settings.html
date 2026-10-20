@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>비트 설정</title>
+  <!--
+    MY_PET 설정 창 화면. 디자인은 settings.css, 동작은 settings.js 를 고치면 된다.
+    Java 와의 연결: settings.js 의 send(...) → Java, Java → window.bitUpdate(state)
+  -->
+  <link rel="stylesheet" href="settings.css">
+</head>
+<body>
+  <!-- 진한 제목 막대 -->
+  <header class="titlebar">
+    <button class="back" data-action="back" title="뒤로가기" hidden>◀</button>
+    <canvas class="bit-icon" aria-hidden="true"></canvas>
+    <h1 id="title">비트 설정</h1>
+    <!-- 외형 설정 화면에서만 보이는 검색창 (외형 이름, 앱 이름으로 검색: 한글/영어) -->
+    <input class="search" id="appearance-search" type="text" placeholder="외형·앱 검색" autocomplete="off" spellcheck="false" hidden>
+  </header>
+
+  <!-- 메인 -->
+  <main class="view" data-view="main">
+    <p class="subtitle">설정할 항목을 선택하세요</p>
+    <button class="menu-row" data-go="appearance">
+      <span class="menu-title">외형 설정</span>
+      <span class="menu-desc">앱 따라 변신</span>
+    </button>
+    <button class="menu-row" data-go="color">
+      <span class="menu-title">색깔 설정</span>
+      <span class="menu-desc">몸 색 바꾸기</span>
+    </button>
+    <footer class="footer">
+      <span class="version" id="version">v-</span>
+      <span class="footer-buttons">
+        <button class="btn btn-danger" data-action="quit">종료</button>
+        <button class="btn btn-primary" data-action="close">닫기</button>
+      </span>
+    </footer>
+  </main>
+
+  <!-- 외형 설정 -->
+  <main class="view" data-view="appearance" hidden>
+    <p class="subtitle">앱을 쓸 때 비트의 모습이 바뀌어요</p>
+    <!-- 외형 목록은 settings.js 의 APPEARANCES 로 만든다 (한 페이지에 5개) -->
+    <section class="box option-list" id="appearance-list"></section>
+    <p class="empty" id="appearance-empty" hidden>검색 결과가 없어요</p>
+    <nav class="pager" id="appearance-pager" aria-label="외형 목록 페이지"></nav>
+    <p class="legend">자동: 그 앱을 쓸 때만 · 끔: 안 바뀜 · 항상 켬: 언제나</p>
+    <p class="status" id="appearance-status"></p>
+  </main>
+
+  <!-- 색깔 설정 -->
+  <main class="view" data-view="color" hidden>
+    <p class="subtitle">비트의 몸 색을 바꿀 수 있어요</p>
+    <section class="box color-preview">
+      <canvas class="bit-stage" aria-hidden="true"></canvas>
+      <div class="hex" id="hex">#000000</div>
+    </section>
+    <div class="button-row">
+      <button class="btn" data-action="defaultColor">기본 색</button>
+      <button class="btn btn-primary" data-action="pickColor">직접 고르기</button>
+    </div>
+    <p class="status" id="color-status"></p>
+  </main>
+
+  <script src="bit.js"></script>
+  <script src="settings.js"></script>
+</body>
+</html>

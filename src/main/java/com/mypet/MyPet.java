@@ -1,7 +1,8 @@
 package com.mypet;
 
+import com.mypet.ui.Ui;
+
 import javax.swing.SwingUtilities;
-import javax.swing.UIManager;
 import java.util.Arrays;
 
 /** 앱 본체 진입점 ({@link Launcher} 가 설치본 또는 업데이트 jar 에서 호출). */
@@ -18,11 +19,7 @@ public final class MyPet {
 		if (!SingleInstance.acquire(afterUpdate ? 20_000 : 0)) {
 			return;
 		}
-		try {
-			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-		} catch (Exception ignored) {
-			// 기본 룩앤필 사용
-		}
+		Ui.installTheme();
 		SwingUtilities.invokeLater(() -> new PetApp().start());
 	}
 }

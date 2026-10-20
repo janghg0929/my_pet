@@ -14,6 +14,15 @@ repositories {
 dependencies {
     implementation 'net.java.dev.jna:jna:5.15.0'
     implementation 'net.java.dev.jna:jna-platform:5.15.0'
+    implementation 'com.formdev:flatlaf:3.7.2'
+
+    // 설정 창의 HTML 화면(WebView)용 JavaFX.
+    // 설치본 런타임(Liberica Full JDK 로 jpackage)에만 들어가고, 업데이트용 MyPet.jar 에는 넣지 않는다.
+    // 클래스만 필요하므로 어느 OS 용 jar 든 상관없어 linux 용으로 고정한다.
+    ['base', 'graphics', 'controls', 'media', 'web', 'swing'].each { module ->
+        compileOnly("org.openjfx:javafx-${module}:21.0.12:linux") { transitive = false }
+        testCompileOnly("org.openjfx:javafx-${module}:21.0.12:linux") { transitive = false }
+    }
 
     testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'

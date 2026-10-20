@@ -14,12 +14,18 @@ case "$ARCH" in
   *) ARCH_NAME=x64 ;;
 esac
 
+# 설정 창(HTML)에 JavaFX WebView 가 필요하다: JavaFX 가 포함된 JDK(예: Liberica Full JDK 21)를 JAVA_HOME 으로
+if [ ! -f "${JAVA_HOME:-/nonexistent}/jmods/javafx.web.jmod" ]; then
+  echo "JAVA_HOME 이 JavaFX 포함 JDK 가 아닙니다 (jmods/javafx.web.jmod 없음). Liberica Full JDK 21 을 지정하세요." >&2
+  exit 1
+fi
+
 OUT="$ROOT/build/jpackage"
 RELEASE="$ROOT/build/release"
 rm -rf "$OUT"
 mkdir -p "$RELEASE"
 
-MODULES="java.base,java.desktop,java.logging,java.net.http,java.prefs,java.management,jdk.crypto.ec,jdk.charsets,jdk.localedata,jdk.unsupported,jdk.zipfs"
+MODULES="java.base,java.desktop,java.logging,java.net.http,java.prefs,java.management,jdk.crypto.ec,jdk.charsets,jdk.localedata,jdk.unsupported,jdk.zipfs,javafx.base,javafx.graphics,javafx.controls,javafx.media,javafx.web,javafx.swing,jdk.jsobject"
 "${JAVA_HOME:+$JAVA_HOME/bin/}jpackage" --type dmg \
   --name MyPet \
   --app-version "$VERSION" \

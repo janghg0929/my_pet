@@ -70,7 +70,19 @@ git push origin v2.0.1
 - 업데이트는 `MyPet.jar` 만 받아서 앱 데이터 폴더(`%LOCALAPPDATA%\MyPet\app`, 맥은 `~/.my_pet/app`)에 두고,
   다음 실행 때 `Launcher` 가 그 jar 로 실행해요. 설치 폴더를 건드리지 않아서 관리자 권한이 필요 없어요.
 
+### 설정 창 디자인 (HTML/CSS)
+우클릭하면 나오는 설정 창은 HTML/CSS 로 그려요. 아래 파일만 고치면 디자인이 바뀌어요.
+
+- `src/main/resources/com/mypet/web/settings.css` – 디자인 (색, 여백, 테두리 …)
+- `src/main/resources/com/mypet/web/settings.html` – 화면 구조
+- `src/main/resources/com/mypet/web/settings.js` – 동작 (Java 와 주고받기)
+
+`settings.html` 을 일반 브라우저로 열면(로컬 서버 필요: 그 폴더에서 `python -m http.server`) 예시 데이터로 미리 볼 수 있어요.
+HTML 화면은 JavaFX WebView 로 보여주는데, JavaFX 가 없는 런타임(예: 2.0.0 설치본에 자동 업데이트만 받은 경우)에서는 Swing 으로 만든 설정 창이 대신 나와요.
+
 ### 빌드 / 실행 / 테스트
+패키지를 만들 때는 **JavaFX 가 포함된 JDK 21**(예: [Liberica Full JDK 21](https://bell-sw.com/pages/downloads/))을 `JAVA_HOME` 으로 지정해야 해요. GitHub Actions 는 자동으로 이 JDK 를 써요.
+
 
 ```bash
 ./gradlew fatJar                                  # build/dist/MyPet.jar

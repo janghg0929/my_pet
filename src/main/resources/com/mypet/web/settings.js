@@ -1,0 +1,341 @@
+// MY_PET 설정 창 동작.
+// Java → JS : window.bitUpdate(state)   (state 는 WebSettings.java 가 만든다)
+// JS → Java : send("메서드", 인자...)     (window.bit = Java 쪽 Bridge 객체)
+
+(function () {
+  "use strict";
+
+  var MODES = [
+    { key: "auto", label: "자동" },
+    { key: "off", label: "끔" },
+    { key: "always", label: "항상 켬" }
+  ];
+  var TITLES = { main: "비트 설정", appearance: "외형 설정", color: "색깔 설정" };
+
+  // 외형 목록. 새 외형을 추가하면 여기에 한 줄 넣으면 된다 (Java 쪽 PetApp.setAppearanceMode 에도 key 추가).
+  // keywords: 검색에 걸리는 말 (외형 이름, 앱 이름 - 한글/영어). 띄어쓰기와 대소문자는 무시하고 찾는다.
+  var APPEARANCES = [
+    {
+      key: "browserMonocle", title: "브라우저 돋보기", when: "크롬·엣지를 쓸 때", whenMac: "브라우저를 쓸 때",
+      keywords: ["브라우저", "돋보기", "크롬", "구글 크롬", "엣지", "마이크로소프트 엣지", "사파리",
+        "browser", "chrome", "google chrome", "edge", "microsoft edge", "safari", "magnifier", "monocle", "magnifying glass"]
+    },
+    {
+      key: "browserIeIcon", title: "브라우저 IE 아이콘", when: "크롬·엣지를 쓸 때", whenMac: "브라우저를 쓸 때",
+      keywords: ["브라우저", "아이콘", "인터넷 익스플로러", "익스플로러", "크롬", "구글 크롬", "엣지", "마이크로소프트 엣지", "사파리",
+        "browser", "ie", "internet explorer", "explorer", "icon", "chrome", "google chrome", "edge", "microsoft edge", "safari"]
+    },
+    {
+      key: "discordColor", title: "디스코드 색상 변경", when: "디스코드를 쓸 때",
+      keywords: ["디스코드", "디코", "색상", "색깔", "색", "discord", "color", "colour"]
+    },
+    {
+      key: "pixelHeart", title: "스팀 픽셀 하트", when: "스팀을 쓸 때",
+      keywords: ["스팀", "픽셀", "하트", "게임", "steam", "pixel", "heart", "game"]
+    },
+    {
+      key: "headset", title: "음악 헤드셋", when: "유튜브·스포티파이",
+      keywords: ["음악", "헤드셋", "헤드폰", "유튜브", "유튜브 뮤직", "스포티파이", "노래",
+        "music", "headset", "headphone", "headphones", "youtube", "youtube music", "spotify", "media"]
+    }
+  ];
+  var PAGE_SIZE = 5; // 한 페이지에 보여줄 외형 수
+  var PAGE_GROUP = 5; // 페이지 번호를 몇 개씩 묶어서 보여줄지
+  var appearancePage = 1;
+  var appearanceQuery = "";
+
+  // 일반 브라우저로 settings.html 을 열었을 때(=Java 연결 없음) 보여줄 예시 데이터
+  var DEMO_STATE = {
+    version: "미리보기",
+    isMac: false,
+    petColor: "#4fc3f7",
+    baseColor: "#4fc3f7",
+    status: "",
+    modes: { browserMonocle: "auto", browserIeIcon: "off", discordColor: "auto", pixelHeart: "always", headset: "auto" }
+  };
+
+  var state = null;
+  var currentView = "main";
+
+  var stage = null; // 색깔 설정의 걷기/점프 미리보기
+
+  function drawIcons() {
+    if (!state || !window.BitView) {
+      return;
+    }
+    var icons = document.querySelectorAll(".bit-icon");
+    for (var i = 0; i < icons.length; i++) {
+      window.BitView.drawIcon(icons[i], state.petColor);
+    }
+  }
+
+  function send(method) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    if (window.bit && typeof window.bit[method] === "function") {
+      window.bit[method].apply(window.bit, args);
+    }
+  }
+
+  // 비트 색을 흰색과 섞은 옅은 색 (마우스 올렸을 때 배경)
+  function lighten(hex) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    function mix(c) { return Math.round((c + 255 * 2) / 3); }
+    return "rgb(" + mix(r) + "," + mix(g) + "," + mix(b) + ")";
+  }
+
+  // 제목 막대 + 지금 보이는 화면의 실제 높이 (창 크기와 상관없이 잰다)
+  function contentHeight() {
+    var height = document.querySelector(".titlebar").offsetHeight;
+    var view = document.querySelector('.view[data-view="' + currentView + '"]');
+    return height + (view ? view.offsetHeight : 0);
+  }
+  window.bitContentHeight = contentHeight;
+
+  function fitWindow() {
+    // 내용 높이에 맞춰 창 크기를 조절해 달라고 Java 에 요청
+    send("resize", contentHeight());
+  }
+
+  function show(view) {
+    currentView = view;
+    var views = document.querySelectorAll(".view");
+    for (var i = 0; i < views.length; i++) {
+      views[i].hidden = views[i].getAttribute("data-view") !== view;
+    }
+    document.getElementById("title").textContent = TITLES[view];
+    document.querySelector(".back").hidden = view === "main";
+    document.getElementById("appearance-search").hidden = view !== "appearance";
+    if (stage) {
+      if (view === "color") {
+        stage.start();
+      } else {
+        stage.stop();
+      }
+    }
+    fitWindow();
+  }
+
+  // 검색용 정리: 소문자로 바꾸고 띄어쓰기·구분 기호를 뺀다 ("Google Chrome" → "googlechrome")
+  function normalize(text) {
+    return String(text).toLowerCase().replace(/[\s·\-_.]/g, "");
+  }
+
+  // 한글은 중간 글자로도 찾고(익스플로러 ← "플로러"), 영어는 단어 첫머리부터 맞을 때만 찾는다
+  // (그래야 "ie" 가 magnifier 같은 단어 속 글자에 걸리지 않는다)
+  function matchesQuery(item, query) {
+    if (!query) {
+      return true;
+    }
+    var english = /^[a-z0-9]+$/.test(query);
+    var words = [item.title, item.when, item.whenMac || ""].concat(item.keywords || []);
+    for (var i = 0; i < words.length; i++) {
+      var word = String(words[i]).toLowerCase();
+      if (!english) {
+        if (normalize(word).indexOf(query) >= 0) {
+          return true;
+        }
+        continue;
+      }
+      // 영어: 단어 첫머리부터 ("google chrome" 은 "google…", "chrome…", "googlechrome…" 으로 찾을 수 있다)
+      var parts = word.split(/[\s·\-_.]+/);
+      for (var j = 0; j < parts.length; j++) {
+        if (normalize(parts.slice(j).join("")).indexOf(query) === 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function selectMode(option, modeKey) {
+    var buttons = option.querySelectorAll(".seg");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle("selected", buttons[i].getAttribute("data-mode") === modeKey);
+    }
+  }
+
+  function createOption(item) {
+    var option = document.createElement("div");
+    option.className = "option";
+    option.setAttribute("data-key", item.key);
+    var head = document.createElement("div");
+    head.className = "option-head";
+    var title = document.createElement("b");
+    title.textContent = item.title;
+    var when = document.createElement("small");
+    when.textContent = state && state.isMac && item.whenMac ? item.whenMac : item.when;
+    head.appendChild(title);
+    head.appendChild(when);
+    var group = document.createElement("div");
+    group.className = "segmented";
+    MODES.forEach(function (mode) {
+      var button = document.createElement("button");
+      button.className = "seg";
+      button.textContent = mode.label;
+      button.setAttribute("data-mode", mode.key);
+      button.addEventListener("click", function () {
+        selectMode(option, mode.key);
+        send("setMode", item.key, mode.key);
+      });
+      group.appendChild(button);
+    });
+    option.appendChild(head);
+    option.appendChild(group);
+    if (state && state.modes) {
+      selectMode(option, state.modes[item.key]);
+    }
+    return option;
+  }
+
+  // 페이지 번호 줄: 5쪽씩 묶어서 보여준다
+  //  3쪽: < 1 2 [3] 4 5 … >   8쪽: < … 6 7 [8] 9 10 … >   13쪽(전체 15): < … 11 12 [13] 14 15 >
+  function pagerItems(page, totalPages) {
+    var items = [{ label: "<", page: page - 1, disabled: page <= 1, arrow: true }];
+    var groupStart = Math.floor((page - 1) / PAGE_GROUP) * PAGE_GROUP + 1;
+    var groupEnd = Math.min(groupStart + PAGE_GROUP - 1, totalPages);
+    if (groupStart > 1) {
+      items.push({ label: "…", page: groupStart - 1, ellipsis: true });
+    }
+    for (var p = groupStart; p <= groupEnd; p++) {
+      items.push({ label: String(p), page: p, current: p === page });
+    }
+    if (groupEnd < totalPages) {
+      items.push({ label: "…", page: groupEnd + 1, ellipsis: true });
+    }
+    items.push({ label: ">", page: page + 1, disabled: page >= totalPages, arrow: true });
+    return items;
+  }
+
+  function renderPager(totalPages) {
+    var pager = document.getElementById("appearance-pager");
+    pager.innerHTML = "";
+    pager.hidden = totalPages < 1;
+    if (totalPages < 1) {
+      return;
+    }
+    pagerItems(appearancePage, totalPages).forEach(function (item) {
+      var button = document.createElement("button");
+      button.textContent = item.label;
+      button.className = "page" + (item.current ? " current" : "") + (item.arrow ? " arrow" : "") + (item.ellipsis ? " ellipsis" : "");
+      button.disabled = !!item.disabled;
+      if (item.current) {
+        button.setAttribute("aria-current", "page");
+      }
+      button.addEventListener("click", function () {
+        if (!item.disabled && !item.current) {
+          appearancePage = item.page;
+          renderAppearanceList();
+        }
+      });
+      pager.appendChild(button);
+    });
+  }
+
+  function renderAppearanceList() {
+    var found = APPEARANCES.filter(function (item) { return matchesQuery(item, appearanceQuery); });
+    var totalPages = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
+    appearancePage = Math.min(Math.max(1, appearancePage), totalPages);
+    var list = document.getElementById("appearance-list");
+    list.innerHTML = "";
+    found.slice((appearancePage - 1) * PAGE_SIZE, appearancePage * PAGE_SIZE).forEach(function (item) {
+      list.appendChild(createOption(item));
+    });
+    list.hidden = found.length === 0;
+    document.getElementById("appearance-empty").hidden = found.length > 0;
+    renderPager(found.length === 0 ? 0 : totalPages);
+    if (currentView === "appearance") {
+      fitWindow();
+    }
+  }
+
+  function render() {
+    if (!state) {
+      return;
+    }
+    var root = document.documentElement.style;
+    root.setProperty("--pet", state.petColor);
+    root.setProperty("--pet-light", lighten(state.petColor));
+
+    document.getElementById("version").textContent = "v" + state.version;
+    document.getElementById("hex").textContent = state.baseColor.toUpperCase();
+    drawIcons();
+    // 색깔 미리보기는 (디스코드 색이 아닌) 원래 몸 색으로 보여준다
+    if (stage) {
+      stage.color = state.baseColor;
+    }
+
+    renderAppearanceList();
+
+    if (state.status) {
+      var target = currentView === "color" ? "color-status" : "appearance-status";
+      document.getElementById(target).textContent = state.status;
+    }
+    if (currentView === "color" && !state.status) {
+      document.getElementById("color-status").textContent = "현재 색상: " + state.baseColor;
+    }
+  }
+
+  window.bitUpdate = function (newState) {
+    state = newState;
+    render();
+    fitWindow();
+  };
+
+  document.addEventListener("click", function (event) {
+    var target = event.target.closest ? event.target.closest("[data-go],[data-action]") : null;
+    if (!target) {
+      return;
+    }
+    var go = target.getAttribute("data-go");
+    if (go) {
+      if (go === "color") {
+        document.getElementById("color-status").textContent = state ? "현재 색상: " + state.baseColor : "";
+      }
+      show(go);
+      return;
+    }
+    var action = target.getAttribute("data-action");
+    if (action === "back") {
+      show("main");
+    } else {
+      send(action);
+    }
+  });
+
+  if (window.BitView) {
+    stage = new window.BitView.Stage(document.querySelector(".bit-stage"));
+  }
+  var search = document.getElementById("appearance-search");
+  search.addEventListener("input", function () {
+    appearanceQuery = normalize(search.value);
+    appearancePage = 1;
+    renderAppearanceList();
+  });
+  search.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" || event.keyCode === 27) {
+      search.value = "";
+      appearanceQuery = "";
+      appearancePage = 1;
+      renderAppearanceList();
+    }
+  });
+  renderAppearanceList();
+  show("main");
+  send("ready");
+
+  // 미리보기/테스트용: 외형 목록과 페이지 번호 계산을 밖에서 볼 수 있게 한다
+  window.bitAppearances = {
+    items: APPEARANCES,
+    pagerItems: pagerItems,
+    refresh: renderAppearanceList,
+    goToPage: function (page) { appearancePage = page; renderAppearanceList(); }
+  };
+
+  // Java 가 연결되지 않았으면(브라우저 미리보기) 예시 데이터로 그린다
+  setTimeout(function () {
+    if (!state && !window.bit) {
+      window.bitUpdate(DEMO_STATE);
+    }
+  }, 300);
+})();

@@ -1,0 +1,368 @@
+/*
+  MY_PET 설정 창 디자인.
+  --pet / --pet-light 는 비트의 현재 몸 색으로 settings.js 가 자동으로 넣어준다.
+*/
+:root {
+  --paper: #fbf6ec;
+  --ink: #26221e;
+  --muted: #7d7468;
+  --box: #ffffff;
+  --hover: #f1ece2;
+  --danger: #c8402f;
+  --pet: #4fc3f7;
+  --pet-light: #a7e1fb;
+  --border: 2px;
+  --shadow: 3px;
+  --shadow-color: rgba(38, 34, 30, 0.3); /* 블록 그림자: 현실 그림자처럼 살짝 비치게 */
+  --font: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --mono: Consolas, Menlo, "Courier New", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 13px;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* ---------- 제목 막대 ---------- */
+.titlebar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--ink);
+  color: var(--paper);
+}
+
+.titlebar h1 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.back {
+  border: 0;
+  background: none;
+  color: var(--paper);
+  font-size: 14px;
+  padding: 0 4px 0 0;
+}
+
+.back:hover {
+  color: var(--pet);
+}
+
+/* 외형 검색창 (제목 막대 오른쪽) */
+.search {
+  margin-left: auto;
+  width: 124px;
+  height: 26px;
+  padding: 0 8px;
+  border: 2px solid var(--paper);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.search::placeholder {
+  color: var(--muted);
+}
+
+.search:focus {
+  border-color: var(--pet);
+}
+
+/* ---------- 비트 (canvas 에 실제 비트 모양을 그린다: settings.js 의 drawBit) ---------- */
+.bit-icon {
+  width: 48px;
+  height: 30px;
+  display: block;
+}
+
+/* 색깔 설정에서 비트가 걷고 점프하는 무대 */
+.bit-stage {
+  width: 100%;
+  height: 170px;
+  display: block;
+}
+
+/* ---------- 본문 ---------- */
+.view {
+  padding: 10px 16px 14px;
+}
+
+.subtitle {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 각진 상자 + 블록 그림자 */
+.box,
+.menu-row,
+.btn,
+.seg {
+  border: var(--border) solid var(--ink);
+  background: var(--box);
+  box-shadow: var(--shadow) var(--shadow) 0 var(--shadow-color);
+}
+
+/* ---------- 메인 메뉴 ---------- */
+.menu-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: calc(100% - var(--shadow));
+  height: 46px;
+  margin-bottom: 11px;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.menu-row:hover {
+  background: var(--pet-light);
+}
+
+.menu-row:hover .menu-title::before {
+  content: "▶ ";
+  font-size: 11px;
+}
+
+.menu-title {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.menu-desc {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* 누르면 그림자 쪽으로 쑥 들어간다 */
+.menu-row:active,
+.btn:active,
+.seg:active {
+  transform: translate(var(--shadow), var(--shadow));
+  box-shadow: none;
+}
+
+/* ---------- 버튼 ---------- */
+.btn {
+  min-width: 72px;
+  height: 34px;
+  padding: 0 16px;
+}
+
+.btn:hover {
+  background: var(--hover);
+}
+
+.btn-primary {
+  background: var(--pet);
+  font-weight: 700;
+}
+
+.btn-primary:hover {
+  background: var(--pet-light);
+}
+
+.btn-danger {
+  color: var(--danger);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.footer-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.version,
+.hex {
+  font-family: var(--mono);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* ---------- 외형 설정 ---------- */
+.option-list {
+  width: calc(100% - var(--shadow));
+}
+
+.option {
+  padding: 9px 12px 11px;
+}
+
+.option + .option {
+  border-top: 1px dashed #cfc7b8;
+}
+
+.option-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 7px;
+}
+
+.option-head small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding-right: var(--shadow);
+}
+
+.seg {
+  height: 28px;
+  font-size: 12px;
+}
+
+.seg:hover {
+  background: var(--hover);
+}
+
+.seg.selected {
+  background: var(--pet);
+  font-weight: 700;
+}
+
+/* ---------- 색깔 설정 ---------- */
+.color-preview {
+  width: calc(100% - var(--shadow));
+  padding: 6px 8px 12px;
+  text-align: center;
+}
+
+.hex {
+  margin-top: 12px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.button-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 14px;
+  padding-right: var(--shadow);
+}
+
+/* ---------- 외형 검색 결과 없음 ---------- */
+.empty {
+  width: calc(100% - var(--shadow));
+  margin: 0;
+  padding: 26px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  border: var(--border) dashed #cfc7b8;
+}
+
+/* ---------- 외형 목록 페이지 번호:  < 1 2 [3] 4 5 … > ---------- */
+.pager {
+  display: flex;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 12px;
+}
+
+.pager[hidden] {
+  display: none;
+}
+
+.page {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: var(--border) solid var(--ink);
+  background: var(--box);
+  box-shadow: 2px 2px 0 var(--shadow-color);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.page:hover:not(:disabled) {
+  background: var(--pet-light);
+}
+
+.page:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: none;
+}
+
+.page.current {
+  background: var(--pet);
+  font-weight: 700;
+  cursor: default;
+}
+
+.page.ellipsis {
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+  min-width: 18px;
+  padding: 0 2px;
+}
+
+.page.ellipsis:hover {
+  background: none;
+  color: var(--pet);
+}
+
+.page:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* ---------- 외형 설명 ---------- */
+.legend {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.legend + .status {
+  margin-top: 6px;
+}
+
+/* ---------- 상태 표시 ---------- */
+.status {
+  margin: 14px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  min-height: 16px;
+}
+
+.status:not(:empty)::before {
+  content: "> ";
+}

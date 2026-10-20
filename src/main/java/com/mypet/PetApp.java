@@ -10,13 +10,13 @@ import com.mypet.appearance.rendering.AppearanceRendering;
 import com.mypet.appearance.rendering.Draw;
 import com.mypet.platform.PlatformSupport;
 import com.mypet.platform.PlatformSupport.PlatformRect;
+import com.mypet.ui.SettingsHost;
+import com.mypet.ui.Ui;
 import com.mypet.update.UpdateService;
 
 import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
-import javax.swing.DefaultListCellRenderer;
 import javax.swing.JButton;
-import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
@@ -30,15 +30,13 @@ import javax.swing.WindowConstants;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Dimension;
+import java.awt.FlowLayout;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GraphicsDevice;
 import java.awt.GraphicsEnvironment;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
 import java.awt.GridLayout;
-import java.awt.Insets;
 import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.PointerInfo;
@@ -56,6 +54,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import java.util.function.Consumer;
 
 import static com.mypet.Constants.*;
 
@@ -63,7 +62,7 @@ import static com.mypet.Constants.*;
  * my_pet.py main() 포팅. 파이썬의 nonlocal 변수들은 필드로, Tk Canvas 도형은 매 프레임 직접 그리기로 바꿨다.
  * 모든 메서드는 Swing 이벤트 스레드(EDT)에서만 호출된다.
  */
-final class PetApp {
+final class PetApp implements SettingsHost {
 	private final PlatformSupport platform = PlatformSupport.create();
 	private final Random random = new Random();
 
@@ -156,6 +155,8 @@ final class PetApp {
 	private AppearanceMode pixelHeartAppearanceMode;
 	private AppearanceMode headsetAppearanceMode;
 	private JDialog settingsDialog;
+	private SettingsHost.View webSettings;
+	private String webStatus = "";
 	private JDialog colorDialog;
 	private JDialog appearanceDialog;
 	private boolean colorDialogOpen = false;
@@ -543,8 +544,12 @@ final class PetApp {
 		dialog.setLocation((int) dialogX, (int) dialogY);
 	}
 
-	/** 공통 설정 창 틀 (항상 위, 크기 고정, 위에서부터 쌓는 세로 배치). */
-	private JDialog createSettingsDialog(String title, Runnable onClose) {
+	/** 설정 창 틀: 위(헤더) / 가운데(내용) / 아래(상태·버튼) 로 나뉜다. */
+	private record SettingsFrame(JDialog dialog, JPanel body, JPanel footer) {
+	}
+
+	/** 공통 설정 창 틀 (항상 위, 크기 고정). */
+	private SettingsFrame createSettingsDialog(String title, JComponent header, Runnable onClose) {
 		JDialog dialog = new JDialog(root, title, JDialog.ModalityType.MODELESS);
 		dialog.setAlwaysOnTop(true);
 		dialog.setResizable(false);
@@ -555,43 +560,43 @@ final class PetApp {
 				onClose.run();
 			}
 		});
-		JPanel content = new JPanel(new GridBagLayout());
-		content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+		// 제목 막대는 창 끝까지 꽉 채우고, 나머지는 안쪽 여백을 둔다
+		JPanel content = new JPanel(new BorderLayout());
+		content.setBackground(Ui.PAPER);
+		content.add(header, BorderLayout.NORTH);
+		JPanel inner = new JPanel(new BorderLayout(0, 14));
+		inner.setOpaque(false);
+		inner.setBorder(BorderFactory.createEmptyBorder(12, 16, 14, 16));
+		JPanel body = Ui.column();
+		JPanel bodyWrap = new JPanel(new BorderLayout());
+		bodyWrap.setOpaque(false);
+		bodyWrap.add(body, BorderLayout.NORTH);
+		inner.add(bodyWrap, BorderLayout.CENTER);
+		JPanel footer = new JPanel(new BorderLayout(8, 0));
+		footer.setOpaque(false);
+		inner.add(footer, BorderLayout.SOUTH);
+		content.add(inner, BorderLayout.CENTER);
 		dialog.setContentPane(content);
-		return dialog;
+		return new SettingsFrame(dialog, body, footer);
 	}
 
-	/** 위에서부터 한 줄씩 가로로 꽉 차게 추가 (Tk pack(fill="x") 대응). */
-	private static void addRow(JDialog dialog, JComponent component, int topGap) {
-		JPanel content = (JPanel) dialog.getContentPane();
-		GridBagConstraints c = new GridBagConstraints();
-		c.gridx = 0;
-		c.gridy = content.getComponentCount();
-		c.weightx = 1.0;
-		c.fill = GridBagConstraints.HORIZONTAL;
-		c.anchor = GridBagConstraints.NORTHWEST;
-		c.insets = new Insets(topGap, 0, 0, 0);
-		content.add(component, c);
-	}
-
-	/** 남는 공간을 아래로 밀고 크기를 고정한 뒤 캐릭터 근처에 띄운다. */
+	/** 내용에 맞춰 크기를 정하고 캐릭터 근처에 띄운다. */
 	private void showSettingsDialog(JDialog dialog) {
-		JPanel content = (JPanel) dialog.getContentPane();
-		GridBagConstraints filler = new GridBagConstraints();
-		filler.gridx = 0;
-		filler.gridy = content.getComponentCount();
-		filler.weighty = 1.0;
-		content.add(new JPanel(), filler);
-		dialog.setSize(SETTINGS_DIALOG_FIXED_WIDTH, SETTINGS_DIALOG_FIXED_HEIGHT);
+		dialog.pack();
+		Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
+		dialog.setSize(Math.max(SETTINGS_DIALOG_FIXED_WIDTH, dialog.getWidth()), Math.min(dialog.getHeight(), screen.height - 40));
 		placeDialogNearCharacter(dialog);
 		dialog.setVisible(true);
 		refreshSettingsDialogOpenState();
 	}
 
 	private static JLabel statusLabel(String text) {
-		JLabel label = new JLabel(text);
-		label.setHorizontalAlignment(SwingConstants.LEFT);
-		return label;
+		return Ui.status(text);
+	}
+
+	/** 설정 창에 쓰는 비트 색 (디스코드 색이 적용돼 있으면 그 색). */
+	private Color petColor() {
+		return Util.toColor(currentCharacterColor);
 	}
 
 	private void closeSettingsDialog() {
@@ -599,8 +604,140 @@ final class PetApp {
 			settingsDialog.dispose();
 		}
 		settingsDialog = null;
+		webSettings = null;
 		refreshSettingsDialogOpenState();
 		cursorResumeDelayMs = CURSOR_RESUME_DELAY_MS;
+	}
+
+	/** 외형 모드를 저장하고 바로 반영. 상태 문구를 돌려준다. */
+	private String saveAndApplyAppearance() {
+		Path savedPath = new AppearanceSettings(
+			browserAppearanceMode,
+			browserIeAppearanceMode,
+			discordAppearanceMode,
+			pixelHeartAppearanceMode,
+			headsetAppearanceMode
+		).save();
+		appModeHoldMs = APP_MODE_HOLD_ON_DRAG_MS;
+		setCharacterColor(isDiscordColorEnabled() ? DISCORD_ICON_BG_COLOR : baseCharacterColor);
+		double[] margins = getAppearanceMargins();
+		applyAppearanceMargins(margins[0], margins[1]);
+		canvas.repaint();
+		return savedPath == null ? "외형 설정 적용됨(저장 실패)" : "외형 설정 적용됨";
+	}
+
+	// ---------------------------------------------------------------- HTML 설정 창 (SettingsHost)
+
+	/** HTML 설정 창이 열려 있으면 화면을 다시 그린다. */
+	private void refreshWebSettings(String status) {
+		webStatus = status;
+		if (webSettings != null) {
+			webSettings.refresh();
+		}
+	}
+
+	@Override
+	public String settingsStateJson() {
+		return "{"
+			+ "\"version\":" + jsonString(UpdateService.currentVersion()) + ","
+			+ "\"isMac\":" + IS_MACOS + ","
+			+ "\"petColor\":" + jsonString(currentCharacterColor) + ","
+			+ "\"baseColor\":" + jsonString(baseCharacterColor) + ","
+			+ "\"status\":" + jsonString(webStatus) + ","
+			+ "\"modes\":{"
+			+ "\"browserMonocle\":" + jsonString(browserAppearanceMode.key) + ","
+			+ "\"browserIeIcon\":" + jsonString(browserIeAppearanceMode.key) + ","
+			+ "\"discordColor\":" + jsonString(discordAppearanceMode.key) + ","
+			+ "\"pixelHeart\":" + jsonString(pixelHeartAppearanceMode.key) + ","
+			+ "\"headset\":" + jsonString(headsetAppearanceMode.key)
+			+ "}}";
+	}
+
+	private static String jsonString(String value) {
+		StringBuilder out = new StringBuilder("\"");
+		for (char ch : (value == null ? "" : value).toCharArray()) {
+			switch (ch) {
+				case '"' -> out.append("\\\"");
+				case '\\' -> out.append("\\\\");
+				case '\n' -> out.append("\\n");
+				case '\r' -> out.append("\\r");
+				case '<' -> out.append("\\u003c");
+				default -> {
+					if (ch < 0x20) {
+						out.append(String.format("\\u%04x", (int) ch));
+					} else {
+						out.append(ch);
+					}
+				}
+			}
+		}
+		return out.append('"').toString();
+	}
+
+	@Override
+	public void setAppearanceMode(String key, String mode) {
+		AppearanceMode value = AppearanceMode.fromKey(mode);
+		if (value == null || key == null) {
+			return;
+		}
+		switch (key) {
+			case "browserMonocle" -> browserAppearanceMode = value;
+			case "browserIeIcon" -> browserIeAppearanceMode = value;
+			case "discordColor" -> discordAppearanceMode = value;
+			case "pixelHeart" -> pixelHeartAppearanceMode = value;
+			case "headset" -> headsetAppearanceMode = value;
+			default -> {
+				return;
+			}
+		}
+		refreshWebSettings(saveAndApplyAppearance());
+	}
+
+	@Override
+	public void applyDefaultColor() {
+		applyBaseColor(DEFAULT_CHARACTER_COLOR, false);
+		refreshWebSettings("기본 색 적용: " + DEFAULT_CHARACTER_COLOR);
+	}
+
+	@Override
+	public void pickCustomColor() {
+		String[] liveSelectedColor = {null};
+		ColorChooserDialog.Result result = ColorChooserDialog.show(
+			settingsDialog,
+			baseCharacterColor,
+			ColorSettings.loadCustomColorSlots(),
+			colorCode -> {
+				liveSelectedColor[0] = colorCode;
+				previewBaseColor(colorCode);
+				refreshWebSettings("미리 적용: " + colorCode);
+			}
+		);
+		String selected = result.selected();
+		if (selected == null) {
+			selected = liveSelectedColor[0];
+			if (selected == null) {
+				refreshWebSettings("색 선택 취소");
+				return;
+			}
+		}
+		ColorSettings.saveCustomColorSlots(result.customSlots());
+		Path savedPath = applyBaseColor(selected, true);
+		refreshWebSettings(savedPath == null ? "선택 색 적용됨(저장 실패): " + selected : "선택 색 적용: " + selected);
+	}
+
+	@Override
+	public void closeSettings() {
+		closeSettingsDialog();
+	}
+
+	@Override
+	public void quit() {
+		exitApplication();
+	}
+
+	@Override
+	public void placeSettingsDialog(JDialog dialog) {
+		placeDialogNearCharacter(dialog);
 	}
 
 	private void closeColorDialog() {
@@ -629,33 +766,50 @@ final class PetApp {
 			return;
 		}
 		freezeMotionForSettings();
+		// HTML 설정 창 (JavaFX 가 있는 설치본). 없으면 아래의 Swing 설정 창으로 대신한다.
+		webStatus = "";
+		SettingsHost.View web = SettingsHost.createWebView(root, this);
+		if (web != null) {
+			webSettings = web;
+			settingsDialog = web.dialog();
+			placeDialogNearCharacter(settingsDialog);
+			settingsDialog.setVisible(true);
+			refreshSettingsDialogOpenState();
+			return;
+		}
+		settingsDialog = buildSettingsDialog();
+		showSettingsDialog(settingsDialog);
+	}
 
-		JDialog dialog = createSettingsDialog("캐릭터 설정", this::closeSettingsDialog);
-		settingsDialog = dialog;
+	/** 메인 설정 창 구성 (띄우지는 않음). */
+	JDialog buildSettingsDialog() {
+		Ui.setAccent(this::petColor);
+		JComponent header = Ui.header("비트 설정", "설정할 항목을 선택하세요", this::petColor, null);
+		SettingsFrame frame = createSettingsDialog("캐릭터 설정", header, this::closeSettingsDialog);
 
-		JButton appearanceButton = new JButton("외형 설정");
-		appearanceButton.addActionListener(e -> {
+		Ui.addFull(frame.body(), Ui.menuRow("외형 설정", "앱 따라 변신", () -> {
 			closeSettingsDialog();
 			openAppearanceDialog();
-		});
-		JButton colorButton = new JButton("색깔 설정");
-		colorButton.addActionListener(e -> {
+		}), 0);
+		Ui.addFull(frame.body(), Ui.menuRow("색깔 설정", "몸 색 바꾸기", () -> {
 			closeSettingsDialog();
 			openColorDialog();
-		});
-		JButton closeButton = new JButton("닫기");
+		}), 8);
+
+		JButton closeButton = Ui.button("닫기", Ui.ButtonStyle.PRIMARY);
 		closeButton.addActionListener(e -> closeSettingsDialog());
 		// macOS 는 독/메뉴바 없이 실행되므로 종료 버튼을 둔다 (Esc 키로도 종료 가능)
-		JButton quitButton = new JButton("MY_PET 종료");
+		JButton quitButton = Ui.button("종료", Ui.ButtonStyle.DANGER);
 		quitButton.addActionListener(e -> exitApplication());
-
-		addRow(dialog, appearanceButton, 0);
-		addRow(dialog, colorButton, 8);
-		addRow(dialog, statusLabel("설정할 항목을 선택하세요"), 8);
-		addRow(dialog, closeButton, 8);
-		addRow(dialog, quitButton, 8);
-		addRow(dialog, statusLabel("버전 " + UpdateService.currentVersion()), 8);
-		showSettingsDialog(dialog);
+		JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
+		buttons.setOpaque(false);
+		buttons.add(quitButton);
+		buttons.add(closeButton);
+		JLabel version = Ui.label("v" + UpdateService.currentVersion(), Font.PLAIN, 12f, Ui.MUTED);
+		version.setFont(Ui.mono(Font.PLAIN, 12f));
+		frame.footer().add(version, BorderLayout.WEST);
+		frame.footer().add(buttons, BorderLayout.EAST);
+		return frame.dialog();
 	}
 
 	/** 외형 설정 창 열기. */
@@ -666,64 +820,57 @@ final class PetApp {
 			return;
 		}
 		freezeMotionForSettings();
+		appearanceDialog = buildAppearanceDialog();
+		showSettingsDialog(appearanceDialog);
+	}
 
-		JDialog dialog = createSettingsDialog("외형 설정", this::closeAppearanceDialog);
-		appearanceDialog = dialog;
-		JLabel status = statusLabel("캐릭터 외형을 설정할 수 있습니다");
-
-		JComboBox<AppearanceMode> browserMenu = modeCombo(browserAppearanceMode);
-		JComboBox<AppearanceMode> browserIeMenu = modeCombo(browserIeAppearanceMode);
-		JComboBox<AppearanceMode> discordMenu = modeCombo(discordAppearanceMode);
-		JComboBox<AppearanceMode> pixelMenu = modeCombo(pixelHeartAppearanceMode);
-		JComboBox<AppearanceMode> headsetMenu = modeCombo(headsetAppearanceMode);
-
-		Runnable applyAppearanceSettings = () -> {
-			browserAppearanceMode = (AppearanceMode) browserMenu.getSelectedItem();
-			browserIeAppearanceMode = (AppearanceMode) browserIeMenu.getSelectedItem();
-			discordAppearanceMode = (AppearanceMode) discordMenu.getSelectedItem();
-			pixelHeartAppearanceMode = (AppearanceMode) pixelMenu.getSelectedItem();
-			headsetAppearanceMode = (AppearanceMode) headsetMenu.getSelectedItem();
-			Path savedPath = new AppearanceSettings(
-				browserAppearanceMode,
-				browserIeAppearanceMode,
-				discordAppearanceMode,
-				pixelHeartAppearanceMode,
-				headsetAppearanceMode
-			).save();
-			appModeHoldMs = APP_MODE_HOLD_ON_DRAG_MS;
-			setCharacterColor(isDiscordColorEnabled() ? DISCORD_ICON_BG_COLOR : baseCharacterColor);
-			double[] margins = getAppearanceMargins();
-			applyAppearanceMargins(margins[0], margins[1]);
-			canvas.repaint();
-			status.setText(savedPath == null ? "외형 설정 적용됨(저장 실패)" : "외형 설정 적용됨");
-		};
-
-		String[] labels = {"브라우저 돋보기", "브라우저 IE 아이콘", "디스코드 색상 변경", "스팀 픽셀 하트", "음악 헤드셋"};
-		List<JComboBox<AppearanceMode>> menus = List.of(browserMenu, browserIeMenu, discordMenu, pixelMenu, headsetMenu);
-		for (int i = 0; i < labels.length; i++) {
-			addRow(dialog, statusLabel(labels[i]), i == 0 ? 0 : 8);
-			addRow(dialog, menus.get(i), 4);
-			menus.get(i).addActionListener(e -> applyAppearanceSettings.run());
-		}
-
-		JButton back = new JButton("뒤로가기");
-		back.addActionListener(e -> {
+	/** 외형 설정 창 구성 (띄우지는 않음). */
+	JDialog buildAppearanceDialog() {
+		Ui.setAccent(this::petColor);
+		JComponent header = Ui.header("외형 설정", "앱을 쓸 때 비트의 모습이 바뀌어요", this::petColor, () -> {
 			closeAppearanceDialog();
 			openSettingsDialog();
 		});
-		addRow(dialog, status, 16);
-		addRow(dialog, back, 8);
-		showSettingsDialog(dialog);
+		SettingsFrame frame = createSettingsDialog("외형 설정", header, this::closeAppearanceDialog);
+		JLabel status = statusLabel("");
+
+		Runnable applyAppearanceSettings = () -> status.setText(saveAndApplyAppearance());
+
+		String browserWhen = IS_MACOS ? "브라우저를 쓸 때" : "크롬·엣지를 쓸 때";
+		List<JComponent> rows = List.of(
+			appearanceRow("브라우저 돋보기", browserWhen, browserAppearanceMode, mode -> {
+				browserAppearanceMode = mode;
+				applyAppearanceSettings.run();
+			}),
+			appearanceRow("브라우저 IE 아이콘", browserWhen, browserIeAppearanceMode, mode -> {
+				browserIeAppearanceMode = mode;
+				applyAppearanceSettings.run();
+			}),
+			appearanceRow("디스코드 색상 변경", "디스코드를 쓸 때", discordAppearanceMode, mode -> {
+				discordAppearanceMode = mode;
+				applyAppearanceSettings.run();
+			}),
+			appearanceRow("스팀 픽셀 하트", "스팀을 쓸 때", pixelHeartAppearanceMode, mode -> {
+				pixelHeartAppearanceMode = mode;
+				applyAppearanceSettings.run();
+			}),
+			appearanceRow("음악 헤드셋", "유튜브·스포티파이", headsetAppearanceMode, mode -> {
+				headsetAppearanceMode = mode;
+				applyAppearanceSettings.run();
+			})
+		);
+		Ui.addFull(frame.body(), Ui.optionList(rows), 0);
+		Ui.addFull(frame.body(), Ui.label("자동: 그 앱을 쓸 때만 · 끔: 안 바뀜 · 항상 켬: 언제나", Font.PLAIN, 11f, Ui.MUTED), 10);
+
+		frame.footer().add(status, BorderLayout.CENTER);
+		return frame.dialog();
 	}
 
-	private static JComboBox<AppearanceMode> modeCombo(AppearanceMode selected) {
-		JComboBox<AppearanceMode> combo = new JComboBox<>(AppearanceMode.values());
-		combo.setSelectedItem(selected);
-		combo.setEditable(false);
-		DefaultListCellRenderer renderer = new DefaultListCellRenderer();
-		renderer.setHorizontalAlignment(SwingConstants.CENTER);
-		combo.setRenderer(renderer);
-		return combo;
+	/** 외형 한 줄: 제목 + 언제 바뀌는지 + 자동/끔/항상 켬 선택. */
+	private static JComponent appearanceRow(String title, String when, AppearanceMode selected, Consumer<AppearanceMode> onChange) {
+		List<AppearanceMode> modes = List.of(AppearanceMode.values());
+		List<String> labels = modes.stream().map(mode -> mode.label).toList();
+		return Ui.optionRow(title, when, Ui.segmented(modes, labels, selected, onChange));
 	}
 
 	/** 기본 색 미리 적용 (저장하지 않음). */
@@ -761,17 +908,43 @@ final class PetApp {
 			return;
 		}
 		freezeMotionForSettings();
+		colorDialog = buildColorDialog();
+		showSettingsDialog(colorDialog);
+	}
 
-		JDialog dialog = createSettingsDialog("캐릭터 색상 설정", this::closeColorDialog);
-		colorDialog = dialog;
+	/** 색상 설정 창 구성 (띄우지는 않음). */
+	JDialog buildColorDialog() {
+		Ui.setAccent(this::petColor);
+		JComponent header = Ui.header("색깔 설정", "비트의 몸 색을 바꿀 수 있어요", this::petColor, () -> {
+			closeColorDialog();
+			openSettingsDialog();
+		});
+		SettingsFrame frame = createSettingsDialog("캐릭터 색상 설정", header, this::closeColorDialog);
+		JDialog dialog = frame.dialog();
 		JLabel status = statusLabel("현재 색상: " + baseCharacterColor);
 
-		JButton defaultButton = new JButton("기본 색");
+		// 현재 색 미리보기
+		Ui.FramedPanel preview = new Ui.FramedPanel(new BorderLayout(0, 10), 14);
+		JLabel previewIcon = new JLabel(Ui.petIcon(1.6, () -> Util.toColor(baseCharacterColor)));
+		previewIcon.setHorizontalAlignment(SwingConstants.CENTER);
+		JLabel previewHex = Ui.label(baseCharacterColor.toUpperCase(), Font.BOLD, 13f, Ui.INK);
+		previewHex.setFont(Ui.mono(Font.BOLD, 14f));
+		previewHex.setHorizontalAlignment(SwingConstants.CENTER);
+		preview.add(previewIcon, BorderLayout.CENTER);
+		preview.add(previewHex, BorderLayout.SOUTH);
+		Runnable refreshPreview = () -> {
+			previewHex.setText(baseCharacterColor.toUpperCase());
+			preview.repaint();
+			dialog.repaint();
+		};
+
+		JButton defaultButton = Ui.button("기본 색", Ui.ButtonStyle.NORMAL);
 		defaultButton.addActionListener(e -> {
 			applyBaseColor(DEFAULT_CHARACTER_COLOR, false);
+			refreshPreview.run();
 			status.setText("기본 색 적용: " + DEFAULT_CHARACTER_COLOR);
 		});
-		JButton customButton = new JButton("사용자 지정 적용");
+		JButton customButton = Ui.button("직접 고르기", Ui.ButtonStyle.PRIMARY);
 		customButton.addActionListener(e -> {
 			String[] liveSelectedColor = {null};
 			ColorChooserDialog.Result result = ColorChooserDialog.show(
@@ -781,6 +954,7 @@ final class PetApp {
 				colorCode -> {
 					liveSelectedColor[0] = colorCode;
 					previewBaseColor(colorCode);
+					refreshPreview.run();
 					status.setText("미리 적용: " + colorCode);
 				}
 			);
@@ -794,21 +968,18 @@ final class PetApp {
 			}
 			ColorSettings.saveCustomColorSlots(result.customSlots());
 			Path savedPath = applyBaseColor(selected, true);
+			refreshPreview.run();
 			status.setText(savedPath == null ? "선택 색 적용됨(저장 실패): " + selected : "선택 색 적용: " + selected);
 		});
 
 		JPanel buttonRow = new JPanel(new GridLayout(1, 2, 8, 0));
+		buttonRow.setOpaque(false);
 		buttonRow.add(defaultButton);
 		buttonRow.add(customButton);
-		JButton back = new JButton("뒤로가기");
-		back.addActionListener(e -> {
-			closeColorDialog();
-			openSettingsDialog();
-		});
-		addRow(dialog, buttonRow, 0);
-		addRow(dialog, status, 8);
-		addRow(dialog, back, 8);
-		showSettingsDialog(dialog);
+		Ui.addFull(frame.body(), preview, 0);
+		Ui.addFull(frame.body(), buttonRow, 12);
+		frame.footer().add(status, BorderLayout.CENTER);
+		return dialog;
 	}
 
 	// ---------------------------------------------------------------- 입력
@@ -1532,8 +1703,9 @@ final class PetApp {
 	/** 캐릭터 전체를 그린다. 순서는 파이썬 Tk 캔버스의 쌓임 순서와 같다. */
 	private void paintScene(Graphics2D g) {
 		String color = currentCharacterColor;
-		// 몸통
-		Draw.rect(g, charOriginX, charOriginY, charOriginX + charFaceWidth, charOriginY + charFaceHeight, color, "#000000", border);
+		// 몸통 (팔/다리와 살짝 떨어지도록 얼굴 영역보다 조금 작게)
+		Draw.rect(g, charOriginX + BODY_INSET_X, charOriginY,
+			charOriginX + charFaceWidth - BODY_INSET_X, charOriginY + charFaceHeight - BODY_INSET_BOTTOM, color, "#000000", border);
 		// 다리
 		Draw.rect(g, leftLegX + limbOffsetX - limbSwayX, legY + limbOffsetY,
 			leftLegX + limbOffsetX - limbSwayX + LIMB_SIZE, legY + limbOffsetY + LIMB_SIZE, color, "#000000", border);

@@ -1,5 +1,5 @@
 # 윈도우 배포 패키지(MyPet-windows-x64.zip) 만들기
-# 사용법: .\scripts\package-windows.ps1 -Version 2.0.0
+# 사용법: $env:JAVA_HOME = '<Liberica Full JDK 21 경로>'; .\scripts\package-windows.ps1 -Version 2.0.0
 # 결과: build\release\MyPet-windows-x64.zip  (압축을 풀고 MyPet\MyPet.exe 실행, 자바 설치 불필요)
 param(
     [Parameter(Mandatory = $true)][string]$Version
@@ -15,12 +15,16 @@ Get-Process -Name MyPet -ErrorAction SilentlyContinue | Stop-Process -Force -Err
 if ($LASTEXITCODE -ne 0) { throw "gradle build failed" }
 
 $jpackage = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin\jpackage.exe' } else { 'jpackage' }
+# 설정 창(HTML)에 JavaFX WebView 가 필요하다: JavaFX 가 포함된 JDK(예: Liberica Full JDK 21)로 JAVA_HOME 을 지정할 것
+if (-not $env:JAVA_HOME -or -not (Test-Path (Join-Path $env:JAVA_HOME 'jmods\javafx.web.jmod'))) {
+    throw "JAVA_HOME 이 JavaFX 포함 JDK 가 아닙니다 (jmods\javafx.web.jmod 없음). Liberica Full JDK 21 을 설치하고 JAVA_HOME 을 지정하세요."
+}
 $out = Join-Path $root 'build\jpackage'
 $release = Join-Path $root 'build\release'
 Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force $release | Out-Null
 
-$modules = 'java.base,java.desktop,java.logging,java.net.http,java.prefs,java.management,jdk.crypto.ec,jdk.charsets,jdk.localedata,jdk.unsupported,jdk.zipfs'
+$modules = 'java.base,java.desktop,java.logging,java.net.http,java.prefs,java.management,jdk.crypto.ec,jdk.charsets,jdk.localedata,jdk.unsupported,jdk.zipfs,javafx.base,javafx.graphics,javafx.controls,javafx.media,javafx.web,javafx.swing,jdk.jsobject'
 & $jpackage --type app-image `
     --name MyPet `
     --app-version $Version `

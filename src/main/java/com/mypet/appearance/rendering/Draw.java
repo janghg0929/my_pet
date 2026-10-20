@@ -8,6 +8,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics2D;
 import java.awt.RenderingHints;
+import java.awt.geom.AffineTransform;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Ellipse2D;
 import java.awt.geom.Line2D;
@@ -43,18 +44,45 @@ public final class Draw {
 		if (w <= 0 || h <= 0) {
 			return;
 		}
+		// 화면 배율(125%, 150% 등)에서도 픽셀이 고르게 맞도록 실제 화면 픽셀 좌표로 바꿔서 그린다
+		AffineTransform transform = g.getTransform();
+		if (transform.getShearX() != 0 || transform.getShearY() != 0) {
+			drawRectInUserSpace(g, ix1, iy1, w, h, fill, outline, width);
+			return;
+		}
+		double sx = transform.getScaleX();
+		double sy = transform.getScaleY();
+		int dx1 = (int) Math.round(transform.getTranslateX() + ix1 * sx);
+		int dy1 = (int) Math.round(transform.getTranslateY() + iy1 * sy);
+		int dx2 = (int) Math.round(transform.getTranslateX() + (ix1 + w) * sx);
+		int dy2 = (int) Math.round(transform.getTranslateY() + (iy1 + h) * sy);
+		Graphics2D device = (Graphics2D) g.create();
+		try {
+			device.setTransform(new AffineTransform());
+			int border = outline != null && width > 0 ? Math.max(1, (int) Math.round(width * Math.min(sx, sy))) : 0;
+			drawRectInUserSpace(device, dx1, dy1, dx2 - dx1, dy2 - dy1, fill, outline, border);
+		} finally {
+			device.dispose();
+		}
+	}
+
+	/**
+	 * 테두리 색으로 바깥을 꽉 채우고 안쪽만 채움 색으로 칠한다.
+	 * 선을 덧그리는 방식은 화면 배율에서 채움 색이 테두리 밖으로 삐져나오기 때문.
+	 */
+	private static void drawRectInUserSpace(Graphics2D g, int x, int y, int w, int h, String fill, String outline, int border) {
+		if (outline != null && border > 0) {
+			g.setColor(color(outline));
+			g.fillRect(x, y, w, h);
+			if (fill != null && w > border * 2 && h > border * 2) {
+				g.setColor(color(fill));
+				g.fillRect(x + border, y + border, w - border * 2, h - border * 2);
+			}
+			return;
+		}
 		if (fill != null) {
 			g.setColor(color(fill));
-			g.fillRect(ix1, iy1, w, h);
-		}
-		if (outline != null && width > 0) {
-			g.setColor(color(outline));
-			if (width == 1) {
-				g.drawRect(ix1, iy1, w - 1, h - 1);
-			} else {
-				g.setStroke(new BasicStroke(width));
-				g.drawRect(ix1, iy1, w, h);
-			}
+			g.fillRect(x, y, w, h);
 		}
 	}
 
