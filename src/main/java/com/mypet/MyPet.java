@@ -1,0 +1,28 @@
+package com.mypet;
+
+import javax.swing.SwingUtilities;
+import javax.swing.UIManager;
+import java.util.Arrays;
+
+/** 앱 본체 진입점 ({@link Launcher} 가 설치본 또는 업데이트 jar 에서 호출). */
+public final class MyPet {
+	/** 업데이트 후 재시작될 때 붙는 인자. 이전 프로세스가 끝날 때까지 단일 실행 잠금을 기다린다. */
+	public static final String AFTER_UPDATE_ARG = "--after-update";
+
+	private MyPet() {
+	}
+
+	public static void main(String[] args) {
+		System.setProperty("apple.awt.UIElement", "true");
+		boolean afterUpdate = Arrays.asList(args).contains(AFTER_UPDATE_ARG);
+		if (!SingleInstance.acquire(afterUpdate ? 20_000 : 0)) {
+			return;
+		}
+		try {
+			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+		} catch (Exception ignored) {
+			// 기본 룩앤필 사용
+		}
+		SwingUtilities.invokeLater(() -> new PetApp().start());
+	}
+}

@@ -1,0 +1,65 @@
+plugins {
+    id 'java'
+    id 'application'
+}
+
+group = 'com.mypet'
+// 릴리스 빌드에서는 -PappVersion=1.2.3 으로 태그 버전을 주입한다 (GitHub Actions 참고)
+version = (findProperty('appVersion') ?: '0.0.0-dev')
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'net.java.dev.jna:jna:5.15.0'
+    implementation 'net.java.dev.jna:jna-platform:5.15.0'
+
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.3'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 21
+}
+
+application {
+    mainClass = 'com.mypet.Launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        showStandardStreams = true
+        exceptionFormat = 'full'
+    }
+}
+
+// 의존성까지 모두 포함한 단일 jar (배포 + 자동 업데이트에 사용)
+tasks.register('fatJar', Jar) {
+    group = 'build'
+    description = '의존성을 포함한 MyPet.jar 를 build/dist 에 만든다.'
+    archiveFileName = 'MyPet.jar'
+    destinationDirectory = layout.buildDirectory.dir('dist')
+    manifest {
+        attributes(
+            'Main-Class': 'com.mypet.Launcher',
+            'Implementation-Title': 'MY_PET',
+            'Implementation-Version': project.version,
+        )
+    }
+    from sourceSets.main.output
+    dependsOn configurations.runtimeClasspath
+    from({ configurations.runtimeClasspath.collect { zipTree(it) } }) {
+        exclude 'META-INF/MANIFEST.MF'
+        exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+        exclude 'module-info.class', 'META-INF/versions/*/module-info.class'
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.named('assemble') {
+    dependsOn 'fatJar'
+}
