@@ -86,8 +86,13 @@ class WebSettingsPreviewTest {
 		File out = new File("build/preview");
 		assertTrue(out.isDirectory() || out.mkdirs());
 		snapshot(settings[0], new File(out, "web-main.png"));
+		// 사용자가 창을 옮긴 것처럼 위치를 바꿔 두고, 화면을 바꿔도 그 자리를 지키는지 본다
+		java.awt.Point moved = new java.awt.Point(-3500, -3600);
+		SwingUtilities.invokeAndWait(() -> settings[0].dialog().setLocation(moved));
 		settings[0].showViewForPreview("appearance");
 		Thread.sleep(700);
+		SwingUtilities.invokeAndWait(() -> System.out.println("after main→appearance: dialog at " + settings[0].dialog().getLocation()
+			+ " (옮겨 둔 자리 " + moved + " 그대로여야 함)"));
 		System.out.println("appearance heights: content=" + evalScript(settings[0], "window.bitContentHeight()")
 			+ " title=" + evalScript(settings[0], "document.querySelector('.titlebar').offsetHeight")
 			+ " view=" + evalScript(settings[0], "document.querySelector('.view[data-view=\"appearance\"]').offsetHeight")
@@ -98,8 +103,19 @@ class WebSettingsPreviewTest {
 		// 검색: 한글/영어로 앱 이름이나 외형 이름을 찾는다
 		// (앱 안에서는 HTML 검색창 자리에 Swing 입력칸이 겹쳐져 있다: 한글 조합 입력 때문)
 		JTextField field = settings[0].searchFieldForPreview();
-		SwingUtilities.invokeAndWait(() -> System.out.println("swing search field visible=" + field.isVisible()
-			+ " bounds=" + field.getBounds() + " / dialog=" + settings[0].dialog().getSize()));
+		String slot = evalScript(settings[0], "var r = document.getElementById('appearance-search').getBoundingClientRect();"
+			+ " Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)");
+		SwingUtilities.invokeAndWait(() -> {
+			javax.swing.JWindow window = settings[0].searchWindowForPreview();
+			java.awt.Point panelOnScreen = settings[0].dialog().getContentPane().getLocationOnScreen();
+			System.out.println("search window visible=" + window.isVisible() + " at " + window.getBounds()
+				+ " | expected panel" + panelOnScreen + " + slot(" + slot + ")");
+		});
+		// 창을 옮기면 검색 창도 따라오는지
+		SwingUtilities.invokeAndWait(() -> settings[0].dialog().setLocation(-3400, -3550));
+		Thread.sleep(300);
+		SwingUtilities.invokeAndWait(() -> System.out.println("after moving dialog to (-3400,-3550): search window at "
+			+ settings[0].searchWindowForPreview().getLocation() + ", panel at " + settings[0].dialog().getContentPane().getLocationOnScreen()));
 		for (String[] query : new String[][] {{"chrome", "web-search-chrome.png"}, {"크", "web-search-k.png"}, {"크롬", "web-search-krom.png"},
 			{"없는거", "web-search-none.png"}}) {
 			SwingUtilities.invokeAndWait(() -> field.setText(query[0]));
@@ -109,9 +125,6 @@ class WebSettingsPreviewTest {
 				+ " | list height=" + evalScript(settings[0], "document.getElementById('appearance-list').offsetHeight")
 				+ " | dialog=" + settings[0].dialog().getSize());
 			snapshot(settings[0], new File(out, query[1]));
-			if (query[0].equals("크롬")) {
-				printWholeDialog(settings[0], new File(out, "web-search-swing-overlay.png"));
-			}
 		}
 		SwingUtilities.invokeAndWait(() -> field.setText(""));
 		Thread.sleep(400);
@@ -133,8 +146,11 @@ class WebSettingsPreviewTest {
 		settings[0].showViewForPreview("back");
 		runScript(settings[0], "document.querySelector('.back').click()");
 		Thread.sleep(400);
+		SwingUtilities.invokeAndWait(() -> System.out.println("after back to main: dialog at " + settings[0].dialog().getLocation()
+			+ " / search window visible=" + settings[0].searchWindowForPreview().isVisible()));
 		settings[0].showViewForPreview("color");
 		Thread.sleep(700);
+		SwingUtilities.invokeAndWait(() -> System.out.println("after main→color: dialog at " + settings[0].dialog().getLocation()));
 		snapshot(settings[0], new File(out, "web-color.png"));
 
 		// 색깔 화면의 걷기/점프 애니메이션: 0.3초 간격으로 20장 찍어 한 장으로 이어 붙인다

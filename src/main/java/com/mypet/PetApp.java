@@ -156,6 +156,8 @@ final class PetApp implements SettingsHost {
 	private AppearanceMode headsetAppearanceMode;
 	private JDialog settingsDialog;
 	private SettingsHost.View webSettings;
+	/** 대체 설정 창끼리 화면을 바꿀 때 새 창을 띄울 자리 (null 이면 캐릭터 근처). */
+	private Point nextDialogLocation;
 	private String webStatus = "";
 	private JDialog colorDialog;
 	private JDialog appearanceDialog;
@@ -585,9 +587,22 @@ final class PetApp implements SettingsHost {
 		dialog.pack();
 		Dimension screen = Toolkit.getDefaultToolkit().getScreenSize();
 		dialog.setSize(Math.max(SETTINGS_DIALOG_FIXED_WIDTH, dialog.getWidth()), Math.min(dialog.getHeight(), screen.height - 40));
-		placeDialogNearCharacter(dialog);
+		if (nextDialogLocation != null) {
+			// 화면을 바꾼 경우: 캐릭터 위로 돌아가지 않고 보던 창 자리 그대로 (화면 밖으로는 안 나가게)
+			int x = (int) Util.clamp(nextDialogLocation.x, 0, Math.max(0, screen.width - dialog.getWidth()));
+			int y = (int) Util.clamp(nextDialogLocation.y, 0, Math.max(0, screen.height - dialog.getHeight()));
+			dialog.setLocation(x, y);
+			nextDialogLocation = null;
+		} else {
+			placeDialogNearCharacter(dialog);
+		}
 		dialog.setVisible(true);
 		refreshSettingsDialogOpenState();
+	}
+
+	/** 다음에 여는 대체 설정 창을 지금 창 자리에 띄우도록 기억한다. */
+	private void rememberDialogLocation(JDialog dialog) {
+		nextDialogLocation = isDialogAlive(dialog) ? dialog.getLocation() : null;
 	}
 
 	private static JLabel statusLabel(String text) {
@@ -788,10 +803,12 @@ final class PetApp implements SettingsHost {
 		SettingsFrame frame = createSettingsDialog("캐릭터 설정", header, this::closeSettingsDialog);
 
 		Ui.addFull(frame.body(), Ui.menuRow("외형 설정", "앱 따라 변신", () -> {
+			rememberDialogLocation(settingsDialog);
 			closeSettingsDialog();
 			openAppearanceDialog();
 		}), 0);
 		Ui.addFull(frame.body(), Ui.menuRow("색깔 설정", "몸 색 바꾸기", () -> {
+			rememberDialogLocation(settingsDialog);
 			closeSettingsDialog();
 			openColorDialog();
 		}), 8);
@@ -828,6 +845,7 @@ final class PetApp implements SettingsHost {
 	JDialog buildAppearanceDialog() {
 		Ui.setAccent(this::petColor);
 		JComponent header = Ui.header("외형 설정", "앱을 쓸 때 비트의 모습이 바뀌어요", this::petColor, () -> {
+			rememberDialogLocation(appearanceDialog);
 			closeAppearanceDialog();
 			openSettingsDialog();
 		});
@@ -916,6 +934,7 @@ final class PetApp implements SettingsHost {
 	JDialog buildColorDialog() {
 		Ui.setAccent(this::petColor);
 		JComponent header = Ui.header("색깔 설정", "비트의 몸 색을 바꿀 수 있어요", this::petColor, () -> {
+			rememberDialogLocation(colorDialog);
 			closeColorDialog();
 			openSettingsDialog();
 		});

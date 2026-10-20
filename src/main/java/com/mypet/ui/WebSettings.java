@@ -15,7 +15,7 @@ import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
 import javax.swing.JComponent;
 import javax.swing.JDialog;
-import javax.swing.JLayeredPane;
+import javax.swing.JWindow;
 import javax.swing.JTextField;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
@@ -25,7 +25,11 @@ import javax.swing.event.DocumentListener;
 import java.awt.Color;
 import java.awt.Font;
 import java.awt.Insets;
+import java.awt.Point;
+import java.awt.Rectangle;
 import java.awt.event.ActionEvent;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
 import java.awt.event.KeyEvent;
@@ -43,9 +47,10 @@ import java.util.function.Consumer;
  * - JS → Java: window.bit.메서드(...)  ({@link Bridge}, JavaFX 스레드에서 불림 → EDT 로 넘긴다)
  * - Java → JS: window.bitUpdate(상태)
  *
- * 외형 검색창은 Swing 입력칸({@link #searchField})을 HTML 검색창 자리에 겹쳐 놓는다.
- * JFXPanel 안의 WebView 는 한글 조합 중인 글자를 받지 못해서(글자가 완성돼야 나타남),
- * 한글 입력이 자연스러운 Swing 입력칸으로 받고 글자가 바뀔 때마다 window.bitSearch(검색어) 로 넘긴다.
+ * 외형 검색창은 Swing 입력칸({@link #searchField})을 담은 작은 창({@link #searchWindow})을 HTML 검색창 자리에 띄운다.
+ * JFXPanel 안의 WebView 는 한글 조합 중인 글자를 받지 못하고(글자가 완성돼야 나타남),
+ * 같은 창 안에 Swing 입력칸을 겹쳐도 한글 입력기가 조합 글자를 화면 구석의 기본 입력 상자에 띄웠다.
+ * 그래서 입력칸을 별도 창으로 분리하고, 글자가 바뀔 때마다 window.bitSearch(검색어) 로 넘긴다.
  */
 public final class WebSettings implements SettingsHost.View {
 	private static final int WIDTH = 360;
@@ -59,6 +64,12 @@ public final class WebSettings implements SettingsHost.View {
 	private WebEngine engine;
 	private boolean loaded;
 	private final JTextField searchField = new JTextField();
+	/** 검색 입력칸을 담는 작은 창 (설정 창에 딸린 창이라 설정 창을 따라다닌다). */
+	private JWindow searchWindow;
+	/** HTML 검색창 자리 (JFXPanel 기준 좌표). null 이면 숨김. */
+	private Rectangle searchSlot;
+	/** 처음 한 번만 캐릭터 근처에 놓고, 그 뒤로는 사용자가 옮긴 자리를 지킨다. */
+	private boolean placedOnce;
 	private Color searchAccent = new Color(0x4FC3F7);
 	/** 창 테두리/제목 표시줄 두께 (처음 한 번 잰다). */
 	private int frameExtraWidth = -1;
@@ -158,7 +169,60 @@ public final class WebSettings implements SettingsHost.View {
 				searchField.setText("");
 			}
 		});
-		dialog.getLayeredPane().add(searchField, JLayeredPane.PALETTE_LAYER);
+		searchField.setVisible(true);
+		searchWindow = new JWindow(dialog);
+		searchWindow.setAlwaysOnTop(true);
+		searchWindow.setFocusableWindowState(true);
+		searchWindow.setContentPane(searchField);
+		// 설정 창을 옮기거나 크기가 바뀌면 검색 창도 따라간다
+		dialog.addComponentListener(new ComponentAdapter() {
+			@Override
+			public void componentMoved(ComponentEvent e) {
+				positionSearchWindow();
+			}
+
+			@Override
+			public void componentResized(ComponentEvent e) {
+				positionSearchWindow();
+			}
+
+			@Override
+			public void componentHidden(ComponentEvent e) {
+				searchWindow.setVisible(false);
+			}
+		});
+		dialog.addWindowListener(new WindowAdapter() {
+			@Override
+			public void windowIconified(WindowEvent e) {
+				searchWindow.setVisible(false);
+			}
+
+			@Override
+			public void windowDeiconified(WindowEvent e) {
+				positionSearchWindow();
+			}
+
+			@Override
+			public void windowClosed(WindowEvent e) {
+				searchWindow.dispose();
+			}
+		});
+	}
+
+	/** (EDT) 검색 창을 HTML 검색창 자리(화면 좌표)에 놓는다. */
+	private void positionSearchWindow() {
+		if (searchWindow == null) {
+			return;
+		}
+		if (searchSlot == null || !dialog.isShowing() || !panel.isShowing()) {
+			searchWindow.setVisible(false);
+			return;
+		}
+		Point origin = panel.getLocationOnScreen();
+		searchWindow.setBounds(origin.x + searchSlot.x, origin.y + searchSlot.y, searchSlot.width, searchSlot.height);
+		if (!searchWindow.isVisible()) {
+			searchWindow.setVisible(true);
+		}
 	}
 
 	private void updateSearchBorder() {
@@ -186,19 +250,16 @@ public final class WebSettings implements SettingsHost.View {
 			// 기본 색 유지
 		}
 		if (!visible) {
-			if (searchField.isVisible()) {
+			if (searchSlot != null) {
 				searchField.setText("");
 			}
-			searchField.setVisible(false);
+			searchSlot = null;
+			positionSearchWindow();
 			return;
 		}
-		// 레이어드 패널 기준 좌표 = 내용(JFXPanel) 기준 좌표 + 내용 패널 위치
-		java.awt.Point origin = SwingUtilities.convertPoint(panel, 0, 0, dialog.getLayeredPane());
-		searchField.setBounds(origin.x + x, origin.y + y, width, height);
+		searchSlot = new Rectangle(x, y, width, height);
 		updateSearchBorder();
-		searchField.setVisible(true);
-		searchField.revalidate();
-		searchField.repaint();
+		positionSearchWindow();
 	}
 
 	/** JS 문자열 리터럴로 감싸기. */
@@ -227,6 +288,11 @@ public final class WebSettings implements SettingsHost.View {
 	/** 개발용: 검색 입력칸 (테스트에서 글자를 넣어 볼 때 사용). */
 	public JTextField searchFieldForPreview() {
 		return searchField;
+	}
+
+	/** 개발용: 검색 입력칸을 담은 작은 창. */
+	public JWindow searchWindowForPreview() {
+		return searchWindow;
 	}
 
 	@Override
@@ -266,7 +332,27 @@ public final class WebSettings implements SettingsHost.View {
 		int height = contentHeight + frameExtraHeight;
 		if (dialog.getWidth() != width || dialog.getHeight() != height) {
 			dialog.setSize(width, height);
-			host.placeSettingsDialog(dialog);
+			if (!placedOnce) {
+				host.placeSettingsDialog(dialog);
+			} else {
+				keepOnScreen();
+			}
+		}
+		placedOnce = true;
+	}
+
+	/** 화면을 바꿔 창이 길어졌을 때 화면 밖으로 나가지 않게만 살짝 옮긴다 (그 외에는 그 자리 그대로). */
+	private void keepOnScreen() {
+		Rectangle screen = dialog.getGraphicsConfiguration() != null
+			? dialog.getGraphicsConfiguration().getBounds()
+			: new Rectangle(java.awt.Toolkit.getDefaultToolkit().getScreenSize());
+		if (!screen.intersects(dialog.getBounds())) {
+			return; // 화면 밖에 일부러 둔 창(미리보기 테스트 등)은 건드리지 않는다
+		}
+		int x = Math.max(screen.x, Math.min(dialog.getX(), screen.x + screen.width - dialog.getWidth()));
+		int y = Math.max(screen.y, Math.min(dialog.getY(), screen.y + screen.height - dialog.getHeight()));
+		if (x != dialog.getX() || y != dialog.getY()) {
+			dialog.setLocation(x, y);
 		}
 	}
 
