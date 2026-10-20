@@ -40,4 +40,7 @@ $zip = Join-Path $release 'MyPet-windows-x64.zip'
 Remove-Item -Force $zip -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $out 'MyPet') -DestinationPath $zip
 Copy-Item -Force (Join-Path $root 'build\dist\MyPet.jar') (Join-Path $release 'MyPet.jar')
-Write-Host "완료: $zip" -ForegroundColor Green
+
+# 사용자가 받는 실행기 MyPet.exe (처음 실행 때 위 zip 을 받아 %LOCALAPPDATA%\MyPet 에 설치)
+& (Join-Path $PSScriptRoot 'build-launcher.ps1')
+Write-Host "완료: $zip, $(Join-Path $release 'MyPet.exe')" -ForegroundColor Green

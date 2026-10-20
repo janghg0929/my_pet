@@ -33,10 +33,15 @@
 
 | 운영체제 | 파일 | 실행 방법 |
 |---|---|---|
-| Windows | `MyPet-windows-x64.zip` | 압축을 풀고 `MyPet` 폴더 안의 `MyPet.exe` 실행 |
+| Windows | **`MyPet.exe`** | 받아서 실행. 처음 한 번은 비트를 설치해요 (약 85MB) |
 | macOS (M1/M2/M3/M4…) | `MyPet-macos-arm64.dmg` | dmg 를 열고 MyPet 을 응용 프로그램 폴더로 끌어다 놓기 |
 | macOS (인텔) | `MyPet-macos-x64.dmg` | 위와 같음 |
 
+- Windows: `MyPet.exe` 는 작은 실행기예요. 처음 실행하면 비트를 `%LOCALAPPDATA%\MyPet`
+  (`C:\Users\<사용자>\AppData\Local\MyPet`) 에 설치하고, 그다음부터는 바로 켜요.
+  지우고 싶으면 비트를 끄고 이 폴더를 지우면 돼요.
+- 설정(색깔, 외형)은 같은 폴더의 `settings.json` 에 저장돼요 (맥은 `~/.my_pet/settings.json`).
+  예전 버전에서 쓰던 설정 파일이 있으면 처음 켤 때 알아서 옮겨 와요.
 - 캐릭터 우클릭(맥: 두 손가락 클릭 또는 Control+클릭) → 설정 (외형, 색깔, 종료)
 - 캐릭터를 클릭한 상태에서 Esc 로 종료할 수 있어요
 - 새 버전이 나오면 실행할 때 "업데이트할까요?" 라고 물어봐요. **예** 를 누르면 알아서 받아서 다시 시작해요

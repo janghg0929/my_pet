@@ -19,7 +19,11 @@ public final class Constants {
 	// 비윈도우 환경에서 설정 파일을 저장할 홈 디렉토리 경로
 	public static final Path USER_CONFIG_DIR = Path.of(System.getProperty("user.home"), ".my_pet"); // 사용자별 설정 폴더
 
-	/** 앱 데이터(업데이트 jar, 잠금 파일) 폴더. 윈도우는 %LOCALAPPDATA%\MyPet, 그 외는 ~/.my_pet */
+	/**
+	 * 앱 데이터 폴더. 윈도우는 %LOCALAPPDATA%\MyPet, 그 외는 ~/.my_pet
+	 * 윈도우 실행기(MyPet.exe)가 앱(app, runtime)을 설치하는 폴더이기도 하다.
+	 * 안에 settings.json(설정), app\MyPet-x.y.z.jar(자동 업데이트), my_pet.lock(중복 실행 방지)이 있다.
+	 */
 	public static Path appDataDir() {
 		if (IS_WINDOWS) {
 			String localAppData = System.getenv("LOCALAPPDATA");
@@ -51,14 +55,17 @@ public final class Constants {
 	public static final int WINDOW_HEIGHT = CHAR_HEIGHT + BOTTOM_EXTENSION + (DRAW_MARGIN * 2) + HEART_TOP_HEADROOM; // 창 세로 크기
 	public static final String DEFAULT_CHARACTER_COLOR = "#4fc3f7"; // 기본 캐릭터 색상
 
-	// 설정 파일 경로: 윈도우는 파이썬 버전과 같은 경로를 써서 기존 설정을 그대로 이어받는다
-	public static final List<Path> CHARACTER_COLOR_SAVE_PATHS = IS_WINDOWS
+	/** 설정 파일 (색깔, 사용자 지정 색, 외형 설정). com.mypet.settings.SettingsStore 참고 */
+	public static final Path SETTINGS_FILE = appDataDir().resolve("settings.json");
+
+	// 예전 형식(파이썬 버전 ~ 2.0.0)의 설정 파일 위치. settings.json 이 없을 때 여기서 읽어 옮기고 지운다.
+	public static final List<Path> LEGACY_CHARACTER_COLOR_PATHS = IS_WINDOWS
 		? List.of(Path.of("C:\\my_pet_custom_color.txt"), Path.of("C:\\Users\\Public\\my_pet_custom_color.txt"))
 		: List.of(USER_CONFIG_DIR.resolve("custom_color.txt"));
-	public static final List<Path> CUSTOM_COLORS_SAVE_PATHS = IS_WINDOWS
+	public static final List<Path> LEGACY_CUSTOM_COLORS_PATHS = IS_WINDOWS
 		? List.of(Path.of("C:\\my_pet_custom_colors.txt"), Path.of("C:\\Users\\Public\\my_pet_custom_colors.txt"))
 		: List.of(USER_CONFIG_DIR.resolve("custom_colors.txt"));
-	public static final List<Path> APPEARANCE_SETTINGS_SAVE_PATHS = IS_WINDOWS
+	public static final List<Path> LEGACY_APPEARANCE_SETTINGS_PATHS = IS_WINDOWS
 		? List.of(Path.of("C:\\my_pet_appearance_settings.txt"), Path.of("C:\\Users\\Public\\my_pet_appearance_settings.txt"))
 		: List.of(USER_CONFIG_DIR.resolve("appearance_settings.txt"));
 	public static final int CUSTOM_COLOR_SLOT_COUNT = 16; // 사용자 지정 색 슬롯 개수
