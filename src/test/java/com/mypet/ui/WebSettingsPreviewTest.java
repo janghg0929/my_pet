@@ -89,10 +89,12 @@ class WebSettingsPreviewTest {
 		// 사용자가 창을 옮긴 것처럼 위치를 바꿔 두고, 화면을 바꿔도 그 자리를 지키는지 본다
 		java.awt.Point moved = new java.awt.Point(-3500, -3600);
 		SwingUtilities.invokeAndWait(() -> settings[0].dialog().setLocation(moved));
+		int[] mainBottom = new int[1];
+		SwingUtilities.invokeAndWait(() -> mainBottom[0] = settings[0].dialog().getY() + settings[0].dialog().getHeight());
 		settings[0].showViewForPreview("appearance");
 		Thread.sleep(700);
-		SwingUtilities.invokeAndWait(() -> System.out.println("after main→appearance: dialog at " + settings[0].dialog().getLocation()
-			+ " (옮겨 둔 자리 " + moved + " 그대로여야 함)"));
+		SwingUtilities.invokeAndWait(() -> System.out.println("after main→appearance: " + edges(settings[0].dialog())
+			+ " (main 일 때 bottom 과 같아야 함: " + mainBottom[0] + ")"));
 		System.out.println("appearance heights: content=" + evalScript(settings[0], "window.bitContentHeight()")
 			+ " title=" + evalScript(settings[0], "document.querySelector('.titlebar').offsetHeight")
 			+ " view=" + evalScript(settings[0], "document.querySelector('.view[data-view=\"appearance\"]').offsetHeight")
@@ -146,11 +148,11 @@ class WebSettingsPreviewTest {
 		settings[0].showViewForPreview("back");
 		runScript(settings[0], "document.querySelector('.back').click()");
 		Thread.sleep(400);
-		SwingUtilities.invokeAndWait(() -> System.out.println("after back to main: dialog at " + settings[0].dialog().getLocation()
+		SwingUtilities.invokeAndWait(() -> System.out.println("after back to main: " + edges(settings[0].dialog())
 			+ " / search window visible=" + settings[0].searchWindowForPreview().isVisible()));
 		settings[0].showViewForPreview("color");
 		Thread.sleep(700);
-		SwingUtilities.invokeAndWait(() -> System.out.println("after main→color: dialog at " + settings[0].dialog().getLocation()));
+		SwingUtilities.invokeAndWait(() -> System.out.println("after main→color: " + edges(settings[0].dialog())));
 		snapshot(settings[0], new File(out, "web-color.png"));
 
 		// 색깔 화면의 걷기/점프 애니메이션: 0.3초 간격으로 20장 찍어 한 장으로 이어 붙인다
@@ -208,6 +210,10 @@ class WebSettingsPreviewTest {
 			image[0] = img;
 		});
 		javax.imageio.ImageIO.write(image[0], "png", file);
+	}
+
+	private static String edges(JDialog dialog) {
+		return "x=" + dialog.getX() + " top=" + dialog.getY() + " bottom=" + (dialog.getY() + dialog.getHeight()) + " height=" + dialog.getHeight();
 	}
 
 	private static String evalScript(WebSettings settings, String script) throws Exception {

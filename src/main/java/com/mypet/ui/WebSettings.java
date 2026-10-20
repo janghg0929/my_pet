@@ -331,10 +331,13 @@ public final class WebSettings implements SettingsHost.View {
 		int width = WIDTH + frameExtraWidth;
 		int height = contentHeight + frameExtraHeight;
 		if (dialog.getWidth() != width || dialog.getHeight() != height) {
-			dialog.setSize(width, height);
 			if (!placedOnce) {
+				dialog.setSize(width, height);
 				host.placeSettingsDialog(dialog);
 			} else {
+				// 창 아래쪽 끝을 기준으로 크기를 바꾼다 (길어지면 위로 자라서 바닥에 붙지 않게)
+				int bottom = dialog.getY() + dialog.getHeight();
+				dialog.setBounds(dialog.getX(), bottom - height, width, height);
 				keepOnScreen();
 			}
 		}

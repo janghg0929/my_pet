@@ -156,7 +156,7 @@ final class PetApp implements SettingsHost {
 	private AppearanceMode headsetAppearanceMode;
 	private JDialog settingsDialog;
 	private SettingsHost.View webSettings;
-	/** 대체 설정 창끼리 화면을 바꿀 때 새 창을 띄울 자리 (null 이면 캐릭터 근처). */
+	/** 대체 설정 창끼리 화면을 바꿀 때 새 창을 띄울 자리: x = 왼쪽, y = 아래쪽 끝 (null 이면 캐릭터 근처). */
 	private Point nextDialogLocation;
 	private String webStatus = "";
 	private JDialog colorDialog;
@@ -590,7 +590,8 @@ final class PetApp implements SettingsHost {
 		if (nextDialogLocation != null) {
 			// 화면을 바꾼 경우: 캐릭터 위로 돌아가지 않고 보던 창 자리 그대로 (화면 밖으로는 안 나가게)
 			int x = (int) Util.clamp(nextDialogLocation.x, 0, Math.max(0, screen.width - dialog.getWidth()));
-			int y = (int) Util.clamp(nextDialogLocation.y, 0, Math.max(0, screen.height - dialog.getHeight()));
+			// 아래쪽 끝을 기준으로: 새 창이 길어도 위로 자라서 바닥에 붙지 않게
+			int y = (int) Util.clamp(nextDialogLocation.y - dialog.getHeight(), 0, Math.max(0, screen.height - dialog.getHeight()));
 			dialog.setLocation(x, y);
 			nextDialogLocation = null;
 		} else {
@@ -602,7 +603,7 @@ final class PetApp implements SettingsHost {
 
 	/** 다음에 여는 대체 설정 창을 지금 창 자리에 띄우도록 기억한다. */
 	private void rememberDialogLocation(JDialog dialog) {
-		nextDialogLocation = isDialogAlive(dialog) ? dialog.getLocation() : null;
+		nextDialogLocation = isDialogAlive(dialog) ? new Point(dialog.getX(), dialog.getY() + dialog.getHeight()) : null;
 	}
 
 	private static JLabel statusLabel(String text) {
