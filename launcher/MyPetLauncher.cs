@@ -1,31 +1,31 @@
 // MY_PET 윈도우 실행기 (MyPet.exe 하나만 받으면 되게).
 //
-// - 처음 실행: GitHub 최신 릴리스의 MyPet-windows-x64.zip 을 받아 %LOCALAPPDATA%\MyPet 에 설치하고 실행한다.
+// 이 exe 안에 비트 프로그램(MyPet-windows-x64.zip: 실행 파일 + app + runtime)이 통째로 들어 있다.
+// - 처음 실행: 안에 든 프로그램을 %LOCALAPPDATA%\MyPet 에 풀어서 설치하고 실행한다 (인터넷 필요 없음).
 // - 그다음부터: 설치된 %LOCALAPPDATA%\MyPet\MyPet.exe 를 바로 실행한다.
-// 앱 업데이트(MyPet.jar)는 설치된 앱이 스스로 하므로 여기서는 하지 않는다.
-//
-// 개발/시험용: MyPet.exe --install-only (설치만 하고 실행하지 않음),
-//              환경 변수 MYPET_ZIP_URL (릴리스 대신 다른 주소에서 받기)
+// - 이 exe 에 든 버전이 설치된 버전보다 새로우면 프로그램을 다시 풀어서 바꾼다 (settings.json 등은 그대로).
+// 평소 앱 업데이트(MyPet.jar)는 설치된 앱이 스스로 한다.
 //
 // 자바 없이 돌아야 해서 윈도우에 기본으로 들어 있는 .NET Framework 4 로 만든다 (C# 5 문법만 사용).
-// 빌드: scripts\build-launcher.ps1
+// 빌드: scripts\build-launcher.ps1 (zip 을 리소스로 넣는다)
+// 개발/시험용: MyPet.exe --install-only (설치만 하고 실행하지 않음)
 
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
-[assembly: System.Reflection.AssemblyTitle("MY_PET")]
-[assembly: System.Reflection.AssemblyProduct("MY_PET")]
+[assembly: AssemblyTitle("MY_PET")]
+[assembly: AssemblyProduct("MY_PET")]
 
 static class MyPetLauncher
 {
-    const string ZipUrl = "https://github.com/janghg0929/my_pet/releases/latest/download/MyPet-windows-x64.zip";
+    const string PackageResource = "MyPet-windows-x64.zip";
     const string ReleasesUrl = "https://github.com/janghg0929/my_pet/releases/latest";
 
     /** 설치 폴더: Java 앱(Constants.appDataDir)과 같은 규칙 - %LOCALAPPDATA%\MyPet */
@@ -39,12 +39,6 @@ static class MyPetLauncher
         return Path.Combine(local, "MyPet");
     }
 
-    static string ZipDownloadUrl()
-    {
-        string custom = Environment.GetEnvironmentVariable("MYPET_ZIP_URL");
-        return string.IsNullOrEmpty(custom) ? ZipUrl : custom;
-    }
-
     [STAThread]
     static int Main(string[] args)
     {
@@ -52,11 +46,22 @@ static class MyPetLauncher
         string app = Path.Combine(home, "MyPet.exe");
         bool installOnly = Array.IndexOf(args, "--install-only") >= 0;
 
-        if (!IsInstalled(home))
+        Version installed = IsInstalled(home) ? ReadInstalledVersion(home) : null;
+        Version packaged = ReadPackagedVersion();
+        bool needInstall = installed == null || (packaged != null && packaged > installed);
+
+        if (needInstall)
         {
+            if (installed != null && IsAppRunning(app))
+            {
+                MessageBox.Show("새 버전으로 바꾸려면 비트를 먼저 꺼야 해요.\n"
+                    + "비트를 클릭하고 Esc 를 누르거나, 우클릭 → 종료 후 다시 실행해 주세요.",
+                    "MY_PET", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return 1;
+            }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            InstallForm form = new InstallForm(home);
+            InstallForm form = new InstallForm(home, installed != null);
             Application.Run(form);
             if (!form.Succeeded)
             {
@@ -91,6 +96,90 @@ static class MyPetLauncher
             && Directory.Exists(Path.Combine(home, "runtime"));
     }
 
+    /** MyPet.cfg 의 "-Djpackage.app-version=2.0.1" 에서 버전을 읽는다. */
+    static Version ParseCfgVersion(string cfg)
+    {
+        Match match = Regex.Match(cfg, @"jpackage\.app-version=([0-9][0-9.]*)");
+        Version version;
+        if (match.Success && Version.TryParse(match.Groups[1].Value.TrimEnd('.'), out version))
+        {
+            return version;
+        }
+        return null;
+    }
+
+    static Version ReadInstalledVersion(string home)
+    {
+        try
+        {
+            return ParseCfgVersion(File.ReadAllText(Path.Combine(home, "app", "MyPet.cfg")));
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /** 이 exe 안에 든 프로그램의 버전. */
+    static Version ReadPackagedVersion()
+    {
+        try
+        {
+            using (Stream stream = OpenPackage())
+            using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read))
+            {
+                foreach (ZipArchiveEntry entry in archive.Entries)
+                {
+                    if (entry.FullName.Replace('\\', '/').EndsWith("/app/MyPet.cfg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        using (StreamReader reader = new StreamReader(entry.Open()))
+                        {
+                            return ParseCfgVersion(reader.ReadToEnd());
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // 버전을 모르면 null
+        }
+        return null;
+    }
+
+    static Stream OpenPackage()
+    {
+        Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(PackageResource);
+        if (stream == null)
+        {
+            throw new FileNotFoundException("이 실행 파일 안에 비트 프로그램이 들어 있지 않아요.");
+        }
+        return stream;
+    }
+
+    /** 설치된 비트가 지금 켜져 있는지 (켜져 있으면 파일이 잠겨서 바꿀 수 없다). */
+    static bool IsAppRunning(string app)
+    {
+        string target = Path.GetFullPath(app);
+        int self = Process.GetCurrentProcess().Id;
+        foreach (Process process in Process.GetProcessesByName("MyPet"))
+        {
+            try
+            {
+                if (process.Id != self
+                    && string.Equals(Path.GetFullPath(process.MainModule.FileName), target, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            catch (Exception)
+            {
+                // 다른 사용자의 프로세스 등은 무시
+            }
+        }
+        return false;
+    }
+
     static string JoinArgs(string[] args)
     {
         string[] quoted = new string[args.Length];
@@ -101,7 +190,7 @@ static class MyPetLauncher
         return string.Join(" ", quoted);
     }
 
-    /** "비트를 설치하는 중" 진행 창. 내려받기 → 압축 풀기 → 닫힘. */
+    /** "비트를 설치하는 중" 진행 창. exe 안의 zip 을 풀고 닫힌다. */
     sealed class InstallForm : Form
     {
         readonly string home;
@@ -109,7 +198,7 @@ static class MyPetLauncher
         readonly ProgressBar bar;
         public bool Succeeded;
 
-        public InstallForm(string home)
+        public InstallForm(string home, bool upgrade)
         {
             this.home = home;
             Text = "MY_PET 설치";
@@ -123,7 +212,7 @@ static class MyPetLauncher
             TopMost = true;
 
             message = new Label();
-            message.Text = "비트를 처음 설치하는 중이에요... (한 번만 해요)";
+            message.Text = upgrade ? "비트를 새 버전으로 바꾸는 중이에요..." : "비트를 처음 설치하는 중이에요... (한 번만 해요)";
             message.SetBounds(18, 18, 344, 22);
             Controls.Add(message);
 
@@ -149,7 +238,7 @@ static class MyPetLauncher
             worker.Start();
         }
 
-        void SetStatus(string text, int percent)
+        void SetProgress(int percent)
         {
             if (IsDisposed)
             {
@@ -157,32 +246,19 @@ static class MyPetLauncher
             }
             BeginInvoke((MethodInvoker)delegate
             {
-                message.Text = text;
-                if (percent < 0)
-                {
-                    bar.Style = ProgressBarStyle.Marquee;
-                }
-                else
-                {
-                    bar.Style = ProgressBarStyle.Continuous;
-                    bar.Value = Math.Max(0, Math.Min(100, percent));
-                }
+                bar.Value = Math.Max(0, Math.Min(100, percent));
             });
         }
 
         void Run()
         {
-            string zip = Path.Combine(Path.GetTempPath(), "MyPet-windows-x64-" + Guid.NewGuid().ToString("N") + ".zip");
             try
             {
-                // GitHub 은 TLS 1.2 이상만 받는다 (.NET 4 기본값이 더 낮을 수 있음)
-                ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
-                Download(zip);
-                SetStatus("압축을 푸는 중이에요...", -1);
-                Extract(zip, home);
+                RemoveOldProgram(home);
+                Extract(home);
                 if (!IsInstalled(home))
                 {
-                    throw new InvalidDataException("내려받은 파일에 비트 프로그램이 없어요.");
+                    throw new InvalidDataException("설치한 폴더에 비트 프로그램이 없어요.");
                 }
                 Succeeded = true;
                 BeginInvoke((MethodInvoker)Close);
@@ -192,8 +268,7 @@ static class MyPetLauncher
                 BeginInvoke((MethodInvoker)delegate
                 {
                     DialogResult answer = MessageBox.Show(this,
-                        "비트를 설치하지 못했어요.\n인터넷 연결을 확인하고 다시 실행해 주세요.\n\n" + e.Message
-                            + "\n\n다운로드 페이지를 열까요?",
+                        "비트를 설치하지 못했어요.\n\n" + e.Message + "\n\n다운로드 페이지를 열까요?",
                         "MY_PET 설치", MessageBoxButtons.YesNo, MessageBoxIcon.Error);
                     if (answer == DialogResult.Yes)
                     {
@@ -202,49 +277,51 @@ static class MyPetLauncher
                     Close();
                 });
             }
-            finally
-            {
-                try { File.Delete(zip); } catch (Exception) { }
-            }
         }
 
-        void Download(string target)
+        /**
+         * 새 버전으로 바꿀 때 예전 프로그램 파일(실행 파일, runtime, app 의 기본 파일)만 지운다.
+         * settings.json, 자동 업데이트 jar(app\MyPet-x.y.z.jar), 잠금 파일은 남긴다.
+         */
+        static void RemoveOldProgram(string home)
         {
-            using (WebClient client = new WebClient())
+            string runtime = Path.Combine(home, "runtime");
+            if (Directory.Exists(runtime))
             {
-                client.Headers.Add("User-Agent", "MY_PET-launcher");
-                ManualResetEvent done = new ManualResetEvent(false);
-                Exception failure = null;
-                client.DownloadProgressChanged += delegate (object sender, DownloadProgressChangedEventArgs e)
-                {
-                    long mb = e.BytesReceived / (1024 * 1024);
-                    long totalMb = e.TotalBytesToReceive > 0 ? e.TotalBytesToReceive / (1024 * 1024) : 0;
-                    string size = totalMb > 0 ? mb + " / " + totalMb + "MB" : mb + "MB";
-                    SetStatus("비트를 처음 설치하는 중이에요... " + size, e.TotalBytesToReceive > 0 ? e.ProgressPercentage : -1);
-                };
-                client.DownloadFileCompleted += delegate (object sender, AsyncCompletedEventArgs e)
-                {
-                    failure = e.Error;
-                    done.Set();
-                };
-                client.DownloadFileAsync(new Uri(ZipDownloadUrl()), target);
-                done.WaitOne();
-                if (failure != null)
-                {
-                    throw failure;
-                }
+                Directory.Delete(runtime, true);
+            }
+            DeleteIfExists(Path.Combine(home, "MyPet.exe"));
+            DeleteIfExists(Path.Combine(home, "MyPet.ico"));
+            DeleteIfExists(Path.Combine(home, "app", "MyPet.jar"));
+            DeleteIfExists(Path.Combine(home, "app", "MyPet.cfg"));
+            DeleteIfExists(Path.Combine(home, "app", ".jpackage.xml"));
+        }
+
+        static void DeleteIfExists(string path)
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
             }
         }
 
-        /** zip 안의 "MyPet/..." 를 home 아래로 푼다 (맨 앞 폴더 이름은 뺀다). */
-        static void Extract(string zipPath, string home)
+        /** exe 안의 zip 에서 "MyPet/..." 를 home 아래로 푼다 (맨 앞 폴더 이름은 뺀다). */
+        void Extract(string home)
         {
             Directory.CreateDirectory(home);
             string root = Path.GetFullPath(home) + Path.DirectorySeparatorChar;
-            using (ZipArchive archive = ZipFile.OpenRead(zipPath))
+            using (Stream stream = OpenPackage())
+            using (ZipArchive archive = new ZipArchive(stream, ZipArchiveMode.Read))
             {
+                int total = archive.Entries.Count;
+                int done = 0;
                 foreach (ZipArchiveEntry entry in archive.Entries)
                 {
+                    done++;
+                    if (done % 20 == 0)
+                    {
+                        SetProgress(done * 100 / Math.Max(1, total));
+                    }
                     string name = entry.FullName.Replace('\\', '/');
                     int slash = name.IndexOf('/');
                     if (slash < 0)
@@ -269,6 +346,7 @@ static class MyPetLauncher
                     Directory.CreateDirectory(Path.GetDirectoryName(target));
                     entry.ExtractToFile(target, true);
                 }
+                SetProgress(100);
             }
         }
     }

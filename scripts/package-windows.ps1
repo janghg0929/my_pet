@@ -1,6 +1,7 @@
-# 윈도우 배포 패키지(MyPet-windows-x64.zip) 만들기
+# 윈도우 배포 파일 만들기
 # 사용법: $env:JAVA_HOME = '<Liberica Full JDK 21 경로>'; .\scripts\package-windows.ps1 -Version 2.0.0
-# 결과: build\release\MyPet-windows-x64.zip  (압축을 풀고 MyPet\MyPet.exe 실행, 자바 설치 불필요)
+# 결과: build\release\MyPet.exe (사용자가 받는 파일: 안에 프로그램 zip 이 들어 있어 처음 실행 때 설치, 자바 설치 불필요)
+#       build\release\MyPet.jar (자동 업데이트용), build\release\MyPet-windows-x64.zip (MyPet.exe 에 넣는 중간 파일)
 param(
     [Parameter(Mandatory = $true)][string]$Version
 )
@@ -41,6 +42,6 @@ Remove-Item -Force $zip -ErrorAction SilentlyContinue
 Compress-Archive -Path (Join-Path $out 'MyPet') -DestinationPath $zip
 Copy-Item -Force (Join-Path $root 'build\dist\MyPet.jar') (Join-Path $release 'MyPet.jar')
 
-# 사용자가 받는 실행기 MyPet.exe (처음 실행 때 위 zip 을 받아 %LOCALAPPDATA%\MyPet 에 설치)
-& (Join-Path $PSScriptRoot 'build-launcher.ps1')
+# 사용자가 받는 MyPet.exe: 위 zip 을 안에 넣는다 (처음 실행 때 %LOCALAPPDATA%\MyPet 에 풀어서 설치)
+& (Join-Path $PSScriptRoot 'build-launcher.ps1') -Package $zip
 Write-Host "완료: $zip, $(Join-Path $release 'MyPet.exe')" -ForegroundColor Green

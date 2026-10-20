@@ -49,7 +49,6 @@ jobs:
           name: pkg-windows
           path: |
             build/release/MyPet.exe
-            build/release/MyPet-windows-x64.zip
             build/release/MyPet.jar
 
   macos:
