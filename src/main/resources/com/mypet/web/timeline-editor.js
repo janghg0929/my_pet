@@ -11,7 +11,7 @@
 
   var STATE_LABELS = { always: "항상", idle: "쉴 때", walk: "걸을 때", air: "공중", grab: "잡힐 때" };
 
-  var LABEL_W = 46, RULER_H = 16, ROW_H = 13, PAD_R = 8;
+  var LABEL_W = 54, RULER_H = 16, ROW_H = 12, PAD_R = 8; // 줄 높이 12: 기본 부위 6줄이 한 번에 보이게
   var KEY_HIT = 6, MAX_KEYS = 60;
   var MIN_VIEW_MS = 100, TIME_ZOOM_STEP = 1.25; // 시간 막대를 가장 크게 확대하면 0.1초가 한 화면
   // 눈금 간격 후보 (ms): 확대할수록 촘촘한 눈금
@@ -122,24 +122,6 @@
       self.clip().restart = !event.target.checked;
       self.commit(0);
     });
-    // 키 사진: 그대로 / 원래 사진 / 이미 쓴 사진 / 새 사진 고르기
-    var keyPhoto = document.getElementById("tl-key-photo");
-    keyPhoto.addEventListener("change", function () {
-      var value = keyPhoto.value;
-      if (value === "@pick") {
-        self.tl.pendingPhoto = { state: self.tl.state, part: self.selected, t: self.tl.playhead };
-        self.send("pickKeyImage");
-        self.refreshControls();
-        return;
-      }
-      var key = self.ensureKey(self.selected, self.tl.playhead);
-      key.photo = value || null;
-      key.flip = false;
-      self.afterChange(self.selected);
-      self.refreshControls();
-      self.draw();
-      self.commit(0);
-    });
     document.getElementById("tl-ease").addEventListener("change", function (event) {
       var key = self.keyAtPlayhead(self.selected);
       if (key) {
@@ -203,20 +185,6 @@
     this.refreshControls();
     this.draw();
     this.commit(0);
-  };
-
-  /** 고른 부위의 키에 쓰인 사진들 (모든 상황, 순서대로) — 사진 칸에서 다시 고를 수 있게. */
-  P.keyPhotos = function (part) {
-    var names = [];
-    var timeline = this.layout.timeline;
-    BV.STATES.forEach(function (state) {
-      (timeline[state].tracks[part] || []).forEach(function (k) {
-        if (k.photo && k.photo !== BV.BASE_PHOTO && names.indexOf(k.photo) < 0) {
-          names.push(k.photo);
-        }
-      });
-    });
-    return names;
   };
 
   /** 지금 고른 상황의 클립. */
@@ -408,31 +376,6 @@
     }
     document.getElementById("tl-loop").checked = clip.loop;
     document.getElementById("tl-continue").checked = !clip.restart;
-    // 키 사진 칸
-    var keyPhoto = document.getElementById("tl-key-photo");
-    if (document.activeElement !== keyPhoto) {
-      var options = [["", "그대로"], [BV.BASE_PHOTO, "원래 사진"]];
-      this.keyPhotos(this.selected).forEach(function (name, i) {
-        options.push([name, "사진 " + (i + 1)]);
-      });
-      options.push(["@pick", "새 사진…"]);
-      // 목록이 바뀔 때만 새로 만든다 (재생 중 매 프레임 다시 만들면 고르는 중에 닫힌다)
-      var signature = JSON.stringify(options);
-      if (keyPhoto.getAttribute("data-options") !== signature) {
-        keyPhoto.setAttribute("data-options", signature);
-        keyPhoto.innerHTML = "";
-        options.forEach(function (o) {
-          var option = document.createElement("option");
-          option.value = o[0];
-          option.textContent = o[1];
-          keyPhoto.appendChild(option);
-        });
-      }
-      var selectedPhoto = key && key.photo ? key.photo : "";
-      if (keyPhoto.value !== selectedPhoto) {
-        keyPhoto.value = selectedPhoto;
-      }
-    }
     var keyHasPhoto = !!(key && key.photo);
     var photo = document.getElementById("tl-photo");
     BV.setText(photo, keyHasPhoto ? "사진 바꾸기" : "사진 넣기");

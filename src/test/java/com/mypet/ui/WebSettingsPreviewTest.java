@@ -420,7 +420,7 @@ class WebSettingsPreviewTest {
 		com.mypet.parts.PartTimeline.Photo photoAt = photoClip.photoAt("leftArm", 700);
 		com.mypet.parts.PartTimeline.Photo mirroredPhoto = photoClip.photoAt("rightArm", 700);
 		System.out.println("key photo: left=" + photoAt + " right=" + mirroredPhoto + " restart=" + photoClip.restart
-			+ " | select shows " + evalScript(settings[0], "document.getElementById('tl-key-photo').selectedOptions[0].textContent"));
+			+ " | button shows " + evalScript(settings[0], "document.getElementById('tl-photo').textContent"));
 		assertTrue(photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart, "키 사진 / 이어서");
 		snapshot(settings[0], new File(out, "web-parts-keyphoto.png"));
 		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
