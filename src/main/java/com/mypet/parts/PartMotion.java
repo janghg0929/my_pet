@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * 부위 하나의 반복 움직임 ("모습 꾸미기 → 움직임"). 기본 움직임(걷기, 점프 등) 위에 더해진다.
+ * 반복 움직임 하나 (흔들기, 둥실 등). {@link PartAnimation} 의 상황마다 하나씩 있다.
  * 계산은 bit.js 의 motionTransform 과 같다 (설정 화면 미리보기와 실제 펫이 똑같이 움직이게).
  */
 public final class PartMotion {
@@ -17,19 +17,19 @@ public final class PartMotion {
 	public static final String BLINK = "blink"; // 깜빡이기: 가끔 세로로 납작해졌다 돌아오기
 	public static final List<String> TYPES = List.of(NONE, SWING, BOB, SWAY, BREATHE, BLINK);
 
-	public static final String ALWAYS = "always";
-	public static final String IDLE = "idle"; // 가만히 있을 때
-	public static final String WALK = "walk"; // 걸을 때
-	public static final String AIR = "air"; // 점프하거나 떨어질 때
-	public static final String GRAB = "grab"; // 마우스로 잡았을 때
-	public static final List<String> WHEN = List.of(ALWAYS, IDLE, WALK, AIR, GRAB);
+	/** 부위마다 넣을 수 있는 움직임 (깜빡이기는 눈만, 숨쉬기는 몸통만). bit.js 의 MOTION_TYPES_FOR 와 같다. */
+	public static List<String> typesFor(String partKey) {
+		return switch (partKey) {
+			case PartLayout.EYES -> List.of(NONE, BLINK, SWAY, BOB);
+			case PartLayout.BODY -> List.of(NONE, BREATHE, BOB, SWAY, SWING);
+			default -> List.of(NONE, SWING, BOB, SWAY); // 팔, 다리
+		};
+	}
 
 	public static final int MIN_LEVEL = 1;
 	public static final int MAX_LEVEL = 10;
 	/** 1초에 틱 수 (펫과 미리보기 모두 64Hz). */
 	public static final double TICKS_PER_SECOND = 64.0;
-	/** 조건이 바뀌었을 때 움직임이 서서히 켜지고 꺼지는 정도 (틱마다). */
-	public static final double FADE = 0.12;
 	private static final double BLINK_SECONDS = 0.18;
 
 	public String type = NONE;
@@ -37,7 +37,6 @@ public final class PartMotion {
 	public int size = 5;
 	/** 빠르기 1..10. */
 	public int speed = 5;
-	public String when = ALWAYS;
 	/** 좌우 맞추기로 반대쪽에 복사할 때 반 박자 엇갈리게 (팔다리). */
 	public boolean alternate;
 	/** 좌우 맞추기로 복사된 쪽: 방향을 거울처럼 뒤집는다. */
@@ -45,7 +44,7 @@ public final class PartMotion {
 	/** 좌우 맞추기로 복사된 쪽: 반 박자 늦게 시작한다. */
 	public boolean half;
 
-	/** 움직임 한 순간의 모양: 옮기기(dx, dy), 더 돌리기(rotation, 도), 늘이기(scaleX, scaleY). */
+	/** 움직임 한 순간의 모양: 옮기기(dx, dy), 더 돌리기(rotation, 도), 늘이기(scaleX, scaleY). 돌리기와 늘이기는 부위 중심점 기준. */
 	public record Transform(double dx, double dy, double rotation, double scaleX, double scaleY) {
 		public static final Transform NONE = new Transform(0, 0, 0, 1, 1);
 
@@ -63,7 +62,6 @@ public final class PartMotion {
 		copy.type = type;
 		copy.size = size;
 		copy.speed = speed;
-		copy.when = when;
 		copy.alternate = alternate;
 		copy.flip = flip;
 		copy.half = half;
@@ -77,11 +75,6 @@ public final class PartMotion {
 		copy.half = alternate != half;
 		copy.alternate = alternate;
 		return copy;
-	}
-
-	/** 이 상태(idle/walk/air/grab)에서 움직여야 하는지. */
-	public boolean runsIn(String state) {
-		return active() && (ALWAYS.equals(when) || when.equals(state));
 	}
 
 	/** ticks 시점의 모양. weight(0..1) 는 서서히 켜고 끄는 정도. */
@@ -139,7 +132,6 @@ public final class PartMotion {
 		item.put("type", type);
 		item.put("size", size);
 		item.put("speed", speed);
-		item.put("when", when);
 		item.put("alternate", alternate);
 		item.put("flip", flip);
 		item.put("half", half);
@@ -153,9 +145,6 @@ public final class PartMotion {
 		}
 		if (item.get("type") instanceof String type && TYPES.contains(type)) {
 			motion.type = type;
-		}
-		if (item.get("when") instanceof String when && WHEN.contains(when)) {
-			motion.when = when;
 		}
 		motion.size = level(item.get("size"), motion.size);
 		motion.speed = level(item.get("speed"), motion.speed);

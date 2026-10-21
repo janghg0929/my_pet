@@ -10,7 +10,7 @@ import com.mypet.appearance.rendering.AppearanceRendering;
 import com.mypet.appearance.rendering.Draw;
 import com.mypet.parts.PartImages;
 import com.mypet.parts.PartLayout;
-import com.mypet.parts.PartMotion;
+import com.mypet.parts.PartAnimation;
 import com.mypet.parts.SavedLook;
 import com.mypet.platform.PlatformSupport;
 import com.mypet.platform.PlatformSupport.PlatformRect;
@@ -191,7 +191,7 @@ final class PetApp implements SettingsHost {
 	// 캐릭터 도형 기준 좌표.
 	// 부위 배치(모습 꾸미기)의 좌표는 "몸통 기본 위치 = 0,0" 기준이고, charOriginX/Y 가 그 0,0 이 창 안의 어디인지다.
 	private PartLayout layout = PartLayout.defaults();
-	// 부위 반복 움직임: 틱 수(시간)와 부위별로 서서히 켜고 끄는 정도(0..1)
+	// 부위 애니메이션: 틱 수(시간)와 상황별로 서서히 켜고 끄는 정도(0..1)
 	private long motionTicks;
 	private final java.util.Map<String, Double> motionWeights = new java.util.HashMap<>();
 	private final PartImages partImages = PartImages.standard();
@@ -1939,27 +1939,19 @@ final class PetApp implements SettingsHost {
 		if (Math.abs(armLiftTarget - armLiftCurrent) < 0.05) {
 			armLiftCurrent = armLiftTarget;
 		}
-		updatePartMotion(dragging ? PartMotion.GRAB : (isAir ? PartMotion.AIR : (isAutoMove ? PartMotion.WALK : PartMotion.IDLE)));
+		updatePartMotion(dragging ? PartAnimation.GRAB : (isAir ? PartAnimation.AIR : (isAutoMove ? PartAnimation.WALK : PartAnimation.IDLE)));
 		canvas.repaint();
 	}
 
-	/** 부위 반복 움직임: 시간을 한 틱 보내고, 지금 상태에 맞는 움직임은 서서히 켜고 아닌 것은 끈다. */
+	/** 부위 애니메이션: 시간을 한 틱 보내고, 지금 상황(쉴 때/걸을 때/공중/잡힐 때) 쪽으로 서서히 바꾼다. */
 	private void updatePartMotion(String state) {
 		motionTicks++;
-		for (String key : PartLayout.KEYS) {
-			double target = layout.get(key).motion.runsIn(state) ? 1.0 : 0.0;
-			double weight = motionWeights.getOrDefault(key, 0.0);
-			weight += (target - weight) * PartMotion.FADE;
-			if (Math.abs(target - weight) < 0.01) {
-				weight = target;
-			}
-			motionWeights.put(key, weight);
-		}
+		PartAnimation.fadeWeights(motionWeights, state);
 	}
 
-	/** 부위의 지금 움직임 모양. */
-	private PartMotion.Transform motionOf(String key) {
-		return layout.get(key).motion.at(motionTicks, motionWeights.getOrDefault(key, 0.0));
+	/** 부위의 지금 애니메이션 모양. */
+	private PartAnimation.Transform motionOf(String key) {
+		return PartAnimation.transform(layout.get(key).animations, motionTicks, motionWeights);
 	}
 
 	private Point lastCursor = new Point(-10_000, -10_000);
@@ -2030,17 +2022,19 @@ final class PetApp implements SettingsHost {
 
 	/**
 	 * 부위 하나: 사진이 있으면 사진, 없으면 몸 색 네모 + 외곽선.
-	 * 회전과 움직임(옮기기, 더 돌리기, 늘이기)은 부위 가운데를 기준으로 한다.
+	 * 부위 회전은 가운데 기준, 애니메이션(옮기기, 돌리기, 늘이기)은 부위 중심점(pivot) 기준.
 	 */
-	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color, PartMotion.Transform motion) {
+	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color, PartAnimation.Transform motion) {
 		BufferedImage image = partImages.get(part.image);
-		double turn = part.rotation + motion.rotation();
-		if (turn == 0) {
-			// 돌리지 않으면 픽셀이 딱 맞게 그린다 (움직임은 위치와 크기만 바꾼다)
+		if (part.rotation == 0 && motion.rotation() == 0) {
+			// 돌리지 않으면 픽셀이 딱 맞게 그린다 (애니메이션은 위치와 크기만 바꾼다)
+			double[] pivot = part.pivotPoint();
+			double px = x + pivot[0] - part.x;
+			double py = y + pivot[1] - part.y;
 			double w = part.w * motion.scaleX();
 			double h = part.h * motion.scaleY();
-			double left = x + motion.dx() + (part.w - w) / 2;
-			double top = y + motion.dy() + (part.h - h) / 2;
+			double left = px + (x - px) * motion.scaleX() + motion.dx();
+			double top = py + (y - py) * motion.scaleY() + motion.dy();
 			if (image == null) {
 				Draw.rect(g, left, top, left + w, top + h, color, "#000000", border);
 			} else {
@@ -2052,12 +2046,7 @@ final class PetApp implements SettingsHost {
 		try {
 			double left = Util.pyRound(x);
 			double top = Util.pyRound(y);
-			double cx = left + part.w / 2.0;
-			double cy = top + part.h / 2.0;
-			gr.translate(cx + motion.dx(), cy + motion.dy());
-			gr.rotate(Math.toRadians(turn));
-			gr.scale(motion.scaleX(), motion.scaleY());
-			gr.translate(-cx, -cy);
+			applyPartTransform(gr, part, left, top, motion);
 			if (image != null) {
 				drawImage(gr, image, left, top, part.w, part.h, part.flip);
 				return;
@@ -2072,6 +2061,26 @@ final class PetApp implements SettingsHost {
 			}
 		} finally {
 			gr.dispose();
+		}
+	}
+
+	/**
+	 * 부위를 그릴 좌표계로 바꾼다: 애니메이션(옮기기 + 중심점 기준 돌리기·늘이기) 다음에 부위 자체 회전(가운데 기준).
+	 * bit.js 의 partTransform 과 같은 순서.
+	 */
+	private static void applyPartTransform(Graphics2D g, PartLayout.Part part, double left, double top, PartAnimation.Transform motion) {
+		double[] pivot = part.pivotPoint();
+		double px = left + pivot[0] - part.x;
+		double py = top + pivot[1] - part.y;
+		g.translate(motion.dx(), motion.dy());
+		if (motion.rotation() != 0 || motion.scaleX() != 1 || motion.scaleY() != 1) {
+			g.translate(px, py);
+			g.rotate(Math.toRadians(motion.rotation()));
+			g.scale(motion.scaleX(), motion.scaleY());
+			g.translate(-px, -py);
+		}
+		if (part.rotation != 0) {
+			g.rotate(Math.toRadians(part.rotation), left + part.w / 2.0, top + part.h / 2.0);
 		}
 	}
 
@@ -2100,14 +2109,9 @@ final class PetApp implements SettingsHost {
 		PartLayout.Part eyes = layout.eyes();
 		Graphics2D graphics = (Graphics2D) original.create();
 		try {
-			PartMotion.Transform motion = motionOf(PartLayout.EYES);
+			PartAnimation.Transform motion = motionOf(PartLayout.EYES);
 			if (eyes.rotation != 0 || !motion.isIdentity()) {
-				double cx = charOriginX + eyes.x + eyes.w / 2.0;
-				double cy = charOriginY + eyes.y + eyes.h / 2.0;
-				graphics.translate(cx + motion.dx(), cy + motion.dy());
-				graphics.rotate(Math.toRadians(eyes.rotation + motion.rotation()));
-				graphics.scale(motion.scaleX(), motion.scaleY());
-				graphics.translate(-cx, -cy);
+				applyPartTransform(graphics, eyes, charOriginX + eyes.x, charOriginY + eyes.y, motion);
 			}
 			paintEyesInBox(graphics, eyes);
 		} finally {

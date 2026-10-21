@@ -56,7 +56,7 @@
 
   <!-- 모습 꾸미기 (parts-editor.js) -->
   <main class="view" data-view="parts" hidden>
-    <p class="subtitle">끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전</p>
+    <p class="subtitle" id="parts-subtitle">끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전</p>
     <section class="box parts-stage">
       <canvas id="parts-canvas" class="parts-canvas" aria-label="비트 모습 편집"></canvas>
     </section>
@@ -80,18 +80,23 @@
       <button class="btn" id="parts-photo-remove">사진 빼기</button>
     </div>
     </div>
-    <!-- 움직임: 걷기·점프 같은 기본 움직임 위에 더해진다 (parts-editor.js, bit.js 의 motionTransform) -->
+    <!-- 움직임: 상황(항상/쉴 때/걸을 때/공중/잡힐 때)마다 자세 + 반복 움직임 (parts-editor.js, bit.js 의 partTransform) -->
     <div id="parts-motion" hidden>
+      <div class="part-tabs anim-states" id="anim-states"></div>
+      <div class="part-fields anim-fields">
+        <label>X 이동 <input id="anim-dx" type="number" step="1"></label>
+        <label>Y 이동 <input id="anim-dy" type="number" step="1"></label>
+        <label>회전 <input id="anim-rotation" type="number" step="5" title="도 (시계 방향)"></label>
+        <label>중심 <select id="anim-pivot" title="돌리기·늘이기의 기준점"></select></label>
+      </div>
       <div class="part-tabs motion-types" id="motion-types"></div>
       <div id="motion-settings">
         <div class="motion-sliders">
           <label>크기 <b id="motion-size-value">5</b><input id="motion-size" type="range" min="1" max="10" step="1"></label>
           <label>빠르기 <b id="motion-speed-value">5</b><input id="motion-speed" type="range" min="1" max="10" step="1"></label>
         </div>
-        <div class="part-tabs motion-when" id="motion-when"></div>
         <label class="check" id="motion-alternate-row"><input type="checkbox" id="motion-alternate"> 반대쪽은 엇갈리게</label>
       </div>
-      <p class="motion-hint" id="motion-hint"></p>
     </div>
     <div class="parts-options">
       <label class="check"><input type="checkbox" id="parts-symmetric"> 좌우 맞추기</label>

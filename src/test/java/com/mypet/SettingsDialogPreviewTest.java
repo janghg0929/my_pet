@@ -98,9 +98,9 @@ class SettingsDialogPreviewTest {
 		layout.leftLeg().x = 14;
 		layout.leftLeg().h = 12;
 		layout.leftArm().rotation = -30;
-		// 움직임: 팔은 흔들기 (1/4 바퀴 지난 순간을 찍는다), 몸통은 숨쉬기
-		layout.leftArm().motion.type = com.mypet.parts.PartMotion.SWING;
-		layout.body().motion.type = com.mypet.parts.PartMotion.BREATHE;
+		// 애니메이션: "공중"에서 팔을 어깨 기준으로 50도 들기, 몸통은 늘 숨쉬기 (1/4 바퀴 지난 순간을 찍는다)
+		layout.leftArm().animations.get(com.mypet.parts.PartAnimation.AIR).rotation = 50;
+		layout.body().animations.get(com.mypet.parts.PartAnimation.ALWAYS).motion.type = com.mypet.parts.PartMotion.BREATHE;
 		layout.leftLeg().rotation = 15;
 		layout.mirrorFrom(PartLayout.LEFT_ARM);
 		layout.mirrorFrom(PartLayout.LEFT_LEG);
@@ -113,9 +113,7 @@ class SettingsDialogPreviewTest {
 		set(app, "motionTicks", 21L);
 		@SuppressWarnings("unchecked")
 		java.util.Map<String, Double> weights = (java.util.Map<String, Double>) get(app, "motionWeights");
-		for (String key : PartLayout.KEYS) {
-			weights.put(key, 1.0);
-		}
+		weights.put(com.mypet.parts.PartAnimation.AIR, 1.0);
 		try {
 			set(app, "expression", Constants.EXPR_NEUTRAL);
 			java.lang.reflect.Method paint = PetApp.class.getDeclaredMethod("paintScene", Graphics2D.class);

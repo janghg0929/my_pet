@@ -249,18 +249,30 @@ class WebSettingsPreviewTest {
 			&& turned.eyes().rotation == -10, "회전 값");
 		snapshot(settings[0], new File(out, "web-parts-rotated.png"));
 
-		// 움직임: 왼팔 흔들기(걸을 때, 엇갈리게) → 오른팔도 따라온다. 편집 화면은 계속 움직인다
+		// 움직임: 왼팔 "공중" 자세 = 어깨 기준 60도 들기 + 흔들기(엇갈리게) → 오른팔은 거울처럼. 편집 화면은 계속 움직인다
 		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=leftArm]').click();"
 			+ " document.querySelector('#parts-mode [data-mode=motion]').click();"
+			+ " document.querySelector('#anim-states [data-key=air]').click();"
+			+ " var r = document.getElementById('anim-rotation'); r.value = '60'; r.dispatchEvent(new Event('input'));"
 			+ " document.querySelector('#motion-types [data-key=swing]').click();"
-			+ " document.querySelector('#motion-when [data-key=walk]').click();"
 			+ " document.getElementById('motion-alternate').click();");
 		Thread.sleep(700);
 		com.mypet.parts.PartLayout moving = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
-		System.out.println("motion sent: left=" + moving.leftArm().motion.type + "/" + moving.leftArm().motion.when
-			+ " right=" + moving.rightArm().motion.type + " half=" + moving.rightArm().motion.half + " flip=" + moving.rightArm().motion.flip
-			+ " | " + edges(settings[0].dialog()));
-		assertTrue("swing".equals(moving.rightArm().motion.type) && moving.rightArm().motion.half, "오른팔 움직임");
+		com.mypet.parts.PartAnimation leftAir = moving.leftArm().animations.get("air");
+		com.mypet.parts.PartAnimation rightAir = moving.rightArm().animations.get("air");
+		System.out.println("animation sent: left air rot=" + leftAir.rotation + " " + leftAir.motion.type
+			+ " | right air rot=" + rightAir.rotation + " " + rightAir.motion.type + " half=" + rightAir.motion.half
+			+ " pivots=" + moving.leftArm().pivot + "/" + moving.rightArm().pivot + " | " + edges(settings[0].dialog()));
+		assertTrue(leftAir.rotation == 60 && rightAir.rotation == -60 && "swing".equals(rightAir.motion.type) && rightAir.motion.half,
+			"공중 자세와 움직임");
+		// 팔에는 깜빡이 없고, 눈에는 있다
+		String blinkOnArm = evalScript(settings[0], "document.querySelector('#motion-types [data-key=blink]').hidden");
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=eyes]').click()");
+		String blinkOnEyes = evalScript(settings[0], "document.querySelector('#motion-types [data-key=blink]').hidden");
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=leftArm]').click()");
+		System.out.println("blink hidden on arm=" + blinkOnArm + ", on eyes=" + blinkOnEyes);
+		assertTrue("true".equals(blinkOnArm) && "false".equals(blinkOnEyes), "부위별 움직임 종류");
+		Thread.sleep(400);
 		String frameA = evalScript(settings[0], "document.getElementById('parts-canvas').toDataURL()");
 		snapshot(settings[0], new File(out, "web-parts-motion.png"));
 		Thread.sleep(250);

@@ -33,6 +33,14 @@ public final class PartLayout {
 	public static final int DEFAULT_EYES_W = 18;
 	public static final int DEFAULT_EYES_H = 6;
 
+	/** 움직임(돌리기, 늘이기)의 중심점: 부위 가운데 또는 한쪽 가장자리 가운데. */
+	public static final String PIVOT_CENTER = "center";
+	public static final String PIVOT_TOP = "top";
+	public static final String PIVOT_BOTTOM = "bottom";
+	public static final String PIVOT_LEFT = "left";
+	public static final String PIVOT_RIGHT = "right";
+	public static final List<String> PIVOTS = List.of(PIVOT_CENTER, PIVOT_TOP, PIVOT_BOTTOM, PIVOT_LEFT, PIVOT_RIGHT);
+
 	private static final int MIN_SIZE = 2;
 	private static final int MAX_SIZE = 400;
 	private static final int MAX_OFFSET = 400;
@@ -49,8 +57,10 @@ public final class PartLayout {
 		public boolean flip;
 		/** 회전 (도, 시계 방향, -179..180). 부위 가운데를 기준으로 돌린다. */
 		public int rotation;
-		/** 반복 움직임 (없으면 type = none). */
-		public PartMotion motion = new PartMotion();
+		/** 움직임 중심점 (팔은 몸 쪽, 다리는 위쪽이 기본: 어깨·엉덩이를 기준으로 돈다). */
+		public String pivot = PIVOT_CENTER;
+		/** 상황별 애니메이션 (항상, 쉴 때, 걸을 때, 공중, 잡힐 때 — 5개 모두 있다). */
+		public final Map<String, PartAnimation> animations = PartAnimation.emptySet();
 		/** 눈 전용: 표정별 사진 파일 이름. */
 		public final Map<String, String> images = new LinkedHashMap<>();
 
@@ -66,7 +76,10 @@ public final class PartLayout {
 			copy.image = image;
 			copy.flip = flip;
 			copy.rotation = rotation;
-			copy.motion = motion.copy();
+			copy.pivot = pivot;
+			for (Map.Entry<String, PartAnimation> entry : animations.entrySet()) {
+				copy.animations.put(entry.getKey(), entry.getValue().copy());
+			}
 			copy.images.putAll(images);
 			return copy;
 		}
@@ -83,19 +96,31 @@ public final class PartLayout {
 			return new double[] {(w / 2.0 * cos + h / 2.0 * sin) * scale, (w / 2.0 * sin + h / 2.0 * cos) * scale};
 		}
 
-		/** 움직임으로 가장 크게 퍼졌을 때를 감싸는 가로/세로 반지름. */
-		double[] motionHalfExtents() {
-			double[] e = motion.extremes();
-			double[] half = halfExtents(rotation, e[3]);
-			if (e[0] > 0) {
-				// 흔들어서 도는 범위 안을 촘촘히 재서 가장 큰 값
-				for (int i = -8; i <= 8; i++) {
-					double[] turned = halfExtents(rotation + e[0] * i / 8.0, e[3]);
-					half[0] = Math.max(half[0], turned[0]);
-					half[1] = Math.max(half[1], turned[1]);
+		/** 중심점 (몸통 기준 좌표, 부위를 돌린 것까지 반영). */
+		public double[] pivotPoint() {
+			double ox = switch (pivot) {
+				case PIVOT_LEFT -> -w / 2.0;
+				case PIVOT_RIGHT -> w / 2.0;
+				default -> 0;
+			};
+			double oy = switch (pivot) {
+				case PIVOT_TOP -> -h / 2.0;
+				case PIVOT_BOTTOM -> h / 2.0;
+				default -> 0;
+			};
+			double rad = Math.toRadians(rotation);
+			double cos = Math.cos(rad);
+			double sin = Math.sin(rad);
+			return new double[] {x + w / 2.0 + ox * cos - oy * sin, y + h / 2.0 + ox * sin + oy * cos};
+		}
+
+		public boolean animated() {
+			for (PartAnimation animation : animations.values()) {
+				if (!animation.isEmpty()) {
+					return true;
 				}
 			}
-			return half;
+			return false;
 		}
 
 		public int right() {
@@ -130,6 +155,9 @@ public final class PartLayout {
 		layout.parts.put(LEFT_LEG, new Part(10, 29, 8, 8));
 		layout.parts.put(RIGHT_LEG, new Part(25, 29, 8, 8));
 		layout.parts.put(EYES, new Part(DEFAULT_EYES_X, DEFAULT_EYES_Y, DEFAULT_EYES_W, DEFAULT_EYES_H));
+		for (Map.Entry<String, Part> entry : layout.parts.entrySet()) {
+			entry.getValue().pivot = defaultPivot(entry.getKey());
+		}
 		return layout;
 	}
 
@@ -198,7 +226,28 @@ public final class PartLayout {
 		target.image = source.image;
 		target.flip = source.image != null && !source.flip;
 		target.rotation = normalizeRotation(-source.rotation);
-		target.motion = source.motion.mirrored();
+		target.pivot = mirrorPivot(source.pivot);
+		for (Map.Entry<String, PartAnimation> entry : source.animations.entrySet()) {
+			target.animations.put(entry.getKey(), entry.getValue().mirrored());
+		}
+	}
+
+	static String mirrorPivot(String pivot) {
+		return switch (pivot) {
+			case PIVOT_LEFT -> PIVOT_RIGHT;
+			case PIVOT_RIGHT -> PIVOT_LEFT;
+			default -> pivot;
+		};
+	}
+
+	/** 부위의 기본 중심점: 팔은 몸 쪽 가장자리, 다리는 위쪽, 나머지는 가운데. */
+	public static String defaultPivot(String key) {
+		return switch (key) {
+			case LEFT_ARM -> PIVOT_RIGHT;
+			case RIGHT_ARM -> PIVOT_LEFT;
+			case LEFT_LEG, RIGHT_LEG -> PIVOT_TOP;
+			default -> PIVOT_CENTER;
+		};
 	}
 
 	/** 전체 범위 (돌린 부위는 돌린 모양을 감싸는 사각형). armRaise = 점프할 때 팔을 드는 높이. */
@@ -227,31 +276,75 @@ public final class PartLayout {
 	}
 
 	/**
-	 * 움직임까지 넣은 전체 범위 (창 크기용). 위·왼쪽·오른쪽은 움직임으로 넓어지고,
-	 * 아래쪽(maxY)도 넓어지지만 발 높이는 {@link #bounds} 의 maxY 를 쓴다.
+	 * 애니메이션까지 넣은 전체 범위 (창 크기용, 넉넉하게 잡는다).
+	 * 발 높이는 움직임 없는 {@link #bounds} 의 maxY 를 쓴다.
 	 */
 	public Bounds motionBounds(int armRaise) {
 		Bounds base = bounds(armRaise);
-		int minX = base.minX();
-		int minY = base.minY();
-		int maxX = base.maxX();
-		int maxY = base.maxY();
+		double minX = base.minX();
+		double minY = base.minY();
+		double maxX = base.maxX();
+		double maxY = base.maxY();
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
-			if (!part.motion.active()) {
+			if (!part.animated()) {
 				continue;
 			}
-			boolean arm = LEFT_ARM.equals(entry.getKey()) || RIGHT_ARM.equals(entry.getKey());
-			double[] e = part.motion.extremes();
-			double[] half = part.motionHalfExtents();
+			// 가장 크게 움직일 때: "항상" + (다른 상황 중 가장 큰 것) — 한 번에 한 상황만 켜진다
+			double[] always = reach(part.animations.get(PartAnimation.ALWAYS), false);
+			double[] most = {0, 0, 0, 0, 1};
+			for (String state : PartAnimation.STATES) {
+				if (!PartAnimation.ALWAYS.equals(state)) {
+					double[] r = reach(part.animations.get(state), true);
+					for (int i = 0; i < 4; i++) {
+						most[i] = Math.max(most[i], r[i]);
+					}
+					most[4] = Math.max(most[4], r[4]);
+				}
+			}
+			double turn = always[0] + most[0];
+			double side = always[1] + most[1];
+			double up = always[2] + most[2];
+			double down = always[3] + most[3];
+			double scale = always[4] * most[4];
+			double[] pivot = part.pivotPoint();
+			double[] half = part.halfExtents();
 			double cx = part.x + part.w / 2.0;
 			double cy = part.y + part.h / 2.0;
-			minX = Math.min(minX, (int) Math.floor(cx - half[0] - e[2]));
-			maxX = Math.max(maxX, (int) Math.ceil(cx + half[0] + e[2]));
-			minY = Math.min(minY, (int) Math.floor(cy - half[1] - e[1]) - (arm ? armRaise : 0));
-			maxY = Math.max(maxY, (int) Math.ceil(cy + half[1]));
+			double left;
+			double right;
+			double top;
+			double bottom;
+			if (turn > 0) {
+				// 돌면 중심점에서 가장 먼 모서리까지를 반지름으로 하는 원 안에 있다
+				double radius = (Math.hypot(Math.abs(cx - pivot[0]) + half[0], Math.abs(cy - pivot[1]) + half[1])) * scale;
+				left = pivot[0] - radius;
+				right = pivot[0] + radius;
+				top = pivot[1] - radius;
+				bottom = pivot[1] + radius;
+			} else {
+				left = pivot[0] + (cx - half[0] - pivot[0]) * scale;
+				right = pivot[0] + (cx + half[0] - pivot[0]) * scale;
+				top = pivot[1] + (cy - half[1] - pivot[1]) * scale;
+				bottom = pivot[1] + (cy + half[1] - pivot[1]) * scale;
+			}
+			boolean arm = LEFT_ARM.equals(entry.getKey()) || RIGHT_ARM.equals(entry.getKey());
+			minX = Math.min(minX, left - side);
+			maxX = Math.max(maxX, right + side);
+			minY = Math.min(minY, top - up - (arm ? armRaise : 0));
+			maxY = Math.max(maxY, bottom + down);
 		}
-		return new Bounds(minX, minY, maxX, maxY);
+		return new Bounds((int) Math.floor(minX), (int) Math.floor(minY), (int) Math.ceil(maxX), (int) Math.ceil(maxY));
+	}
+
+	/** 애니메이션 하나가 가장 크게 움직이는 값: [돌기(도), 옆(px), 위(px), 아래(px), 커지는 배율]. */
+	private static double[] reach(PartAnimation animation, boolean withPose) {
+		double[] e = animation.motion.extremes();
+		double turn = e[0] + (withPose ? Math.abs(animation.rotation) : 0);
+		double side = e[2] + (withPose ? Math.abs(animation.dx) : 0);
+		double up = e[1] + (withPose ? Math.max(0, -animation.dy) : 0);
+		double down = withPose ? Math.max(0, animation.dy) : 0;
+		return new double[] {turn, side, up, down, e[3]};
 	}
 
 	/** 각도를 -179..180 도로 맞춘다. */
@@ -290,7 +383,12 @@ public final class PartLayout {
 			item.put("w", part.w);
 			item.put("h", part.h);
 			item.put("rotation", part.rotation);
-			item.put("motion", part.motion.toJson());
+			item.put("pivot", part.pivot);
+			Map<String, Object> animations = new LinkedHashMap<>();
+			for (Map.Entry<String, PartAnimation> animation : part.animations.entrySet()) {
+				animations.put(animation.getKey(), animation.getValue().toJson());
+			}
+			item.put("animations", animations);
 			if (EYES.equals(entry.getKey())) {
 				Map<String, Object> images = new LinkedHashMap<>();
 				for (String expression : EYE_EXPRESSIONS) {
@@ -325,7 +423,24 @@ public final class PartLayout {
 			part.w = clampInt(item.get("w"), part.w, MIN_SIZE, MAX_SIZE);
 			part.h = clampInt(item.get("h"), part.h, MIN_SIZE, MAX_SIZE);
 			part.rotation = normalizeRotation(clampInt(item.get("rotation"), 0, -100_000, 100_000));
-			part.motion = PartMotion.fromJson(item.get("motion"));
+			if (item.get("pivot") instanceof String pivot && PIVOTS.contains(pivot)) {
+				part.pivot = pivot;
+			}
+			if (item.get("animations") instanceof Map<?, ?> animations) {
+				for (String state : PartAnimation.STATES) {
+					part.animations.put(state, PartAnimation.fromJson(animations.get(state)));
+				}
+			} else if (item.get("motion") instanceof Map<?, ?> legacy) {
+				// 2.0.3 미리보기 5: 부위마다 움직임 하나 + "언제"
+				String state = legacy.get("when") instanceof String when && PartAnimation.STATES.contains(when) ? when : PartAnimation.ALWAYS;
+				part.animations.get(state).motion = PartMotion.fromJson(legacy);
+			}
+			// 이 부위에 넣을 수 없는 움직임은 뺀다 (예: 팔 깜빡이기)
+			for (PartAnimation animation : part.animations.values()) {
+				if (!PartMotion.typesFor(key).contains(animation.motion.type)) {
+					animation.motion.type = PartMotion.NONE;
+				}
+			}
 			if (EYES.equals(key)) {
 				if (item.get("images") instanceof Map<?, ?> images) {
 					for (String expression : EYE_EXPRESSIONS) {

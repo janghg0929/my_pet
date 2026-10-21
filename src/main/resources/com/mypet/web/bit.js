@@ -39,17 +39,33 @@
   function copyLayout(layout) {
     var copy = JSON.parse(JSON.stringify(layout || DEFAULT_LAYOUT));
     PART_KEYS.forEach(function (key) {
-      copy[key].motion = normalizeMotion(copy[key].motion);
+      normalizePart(key, copy[key]);
     });
     return copy;
   }
 
-  // ---------------------------------------------------------------- 부위 반복 움직임 (PartMotion.java 와 같은 계산)
+  // ---------------------------------------------------------------- 부위 애니메이션 (PartAnimation.java, PartMotion.java 와 같은 계산)
 
-  var MOTION_TICKS_PER_SECOND = 64, MOTION_FADE = 0.12, BLINK_SECONDS = 0.18;
+  var STATES = ["always", "idle", "walk", "air", "grab"];
+  var MOTION_TICKS_PER_SECOND = 64, ANIMATION_FADE = 0.15, BLINK_SECONDS = 0.18;
+  // 부위마다 넣을 수 있는 움직임 (PartMotion.typesFor)
+  var MOTION_TYPES_FOR = {
+    eyes: ["none", "blink", "sway", "bob"],
+    body: ["none", "breathe", "bob", "sway", "swing"],
+    limb: ["none", "swing", "bob", "sway"]
+  };
+
+  function motionTypesFor(key) {
+    return MOTION_TYPES_FOR[key] || MOTION_TYPES_FOR.limb;
+  }
+
+  /** 부위의 기본 중심점: 팔은 몸 쪽 가장자리, 다리는 위쪽, 나머지는 가운데 (PartLayout.defaultPivot). */
+  function defaultPivot(key) {
+    return { leftArm: "right", rightArm: "left", leftLeg: "top", rightLeg: "top" }[key] || "center";
+  }
 
   function defaultMotion() {
-    return { type: "none", size: 5, speed: 5, when: "always", alternate: false, flip: false, half: false };
+    return { type: "none", size: 5, speed: 5, alternate: false, flip: false, half: false };
   }
 
   function normalizeMotion(motion) {
@@ -64,8 +80,45 @@
     return m;
   }
 
+  function emptyAnimation() {
+    return { dx: 0, dy: 0, rotation: 0, motion: defaultMotion() };
+  }
+
+  /** 빠진 값(중심점, 상황별 애니메이션)을 채운다. 예전 미리보기의 part.motion 은 그 "언제" 상황으로 옮긴다. */
+  function normalizePart(key, part) {
+    part.rotation = part.rotation || 0;
+    part.pivot = part.pivot || defaultPivot(key);
+    var animations = part.animations || {};
+    if (!part.animations && part.motion && part.motion.type) {
+      var state = STATES.indexOf(part.motion.when) >= 0 ? part.motion.when : "always";
+      animations[state] = { dx: 0, dy: 0, rotation: 0, motion: part.motion };
+    }
+    delete part.motion;
+    var allowed = motionTypesFor(key);
+    part.animations = {};
+    STATES.forEach(function (state) {
+      var a = animations[state] || emptyAnimation();
+      var m = normalizeMotion(a.motion);
+      if (allowed.indexOf(m.type) < 0) {
+        m.type = "none";
+      }
+      part.animations[state] = { dx: a.dx || 0, dy: a.dy || 0, rotation: a.rotation || 0, motion: m };
+    });
+    return part;
+  }
+
   function motionActive(m) {
     return !!m && m.type !== "none";
+  }
+
+  function animationEmpty(a) {
+    return !a.dx && !a.dy && !a.rotation && !motionActive(a.motion);
+  }
+
+  function partAnimated(part) {
+    return STATES.some(function (state) {
+      return part.animations && !animationEmpty(part.animations[state]);
+    });
   }
 
   /** 좌우 맞추기: 반대쪽 부위에 넣을 움직임 (PartMotion.mirrored). */
@@ -76,9 +129,23 @@
     return copy;
   }
 
+  function normalizeRotation(degrees) {
+    var r = ((Math.round(degrees) % 360) + 360) % 360;
+    return r > 180 ? r - 360 : r;
+  }
+
+  /** 좌우 맞추기: 반대쪽 부위에 넣을 애니메이션 (PartAnimation.mirrored). */
+  function mirroredAnimation(a) {
+    return { dx: -(a.dx || 0), dy: a.dy || 0, rotation: normalizeRotation(-(a.rotation || 0)), motion: mirroredMotion(a.motion) };
+  }
+
+  function mirroredPivot(pivot) {
+    return pivot === "left" ? "right" : pivot === "right" ? "left" : pivot;
+  }
+
   var NO_MOTION = { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 };
 
-  /** ticks 시점의 모양 (PartMotion.at). */
+  /** ticks 시점의 반복 움직임 모양 (PartMotion.at). */
   function motionTransform(m, ticks, weight) {
     if (!motionActive(m) || !(weight > 0)) {
       return NO_MOTION;
@@ -110,30 +177,58 @@
     return NO_MOTION;
   }
 
-  /** 시간과 부위별 켜짐 정도를 들고 다니는 시계. tick(layout, state) 를 64Hz 로 부른다. */
+  /** 상황별 켜짐 정도로 섞은 부위의 지금 모양 (PartAnimation.transform). "항상"은 자세 없이 움직임만. */
+  function partTransform(part, ticks, weights) {
+    if (!part.animations) {
+      return NO_MOTION;
+    }
+    var t = { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+    STATES.forEach(function (state) {
+      var a = part.animations[state];
+      var weight = state === "always" ? 1 : (weights[state] || 0);
+      if (!a || weight <= 0) {
+        return;
+      }
+      if (state !== "always") {
+        t.dx += a.dx * weight;
+        t.dy += a.dy * weight;
+        t.rotation += a.rotation * weight;
+      }
+      var m = motionTransform(a.motion, ticks, weight);
+      t.dx += m.dx;
+      t.dy += m.dy;
+      t.rotation += m.rotation;
+      t.scaleX *= m.scaleX;
+      t.scaleY *= m.scaleY;
+    });
+    return t;
+  }
+
+  /** 시간과 상황별 켜짐 정도를 들고 다니는 시계. tick(state) 를 64Hz 로 부른다 (PartAnimation.fadeWeights). */
   function MotionClock() {
     this.ticks = 0;
     this.weights = {};
   }
 
-  MotionClock.prototype.tick = function (layout, state) {
+  MotionClock.prototype.tick = function (state) {
     var self = this;
     this.ticks += 1;
-    PART_KEYS.forEach(function (key) {
-      var m = layout[key].motion;
-      // state "preview" = 설정 화면 편집기: 언제든 움직인다
-      var target = motionActive(m) && (m.when === "always" || m.when === state || state === "preview") ? 1 : 0;
-      var w = self.weights[key] || 0;
-      w += (target - w) * MOTION_FADE;
+    STATES.forEach(function (s) {
+      if (s === "always") {
+        return;
+      }
+      var target = s === state ? 1 : 0;
+      var w = self.weights[s] || 0;
+      w += (target - w) * ANIMATION_FADE;
       if (Math.abs(target - w) < 0.01) {
         w = target;
       }
-      self.weights[key] = w;
+      self.weights[s] = w;
     });
   };
 
   MotionClock.prototype.transform = function (layout, key) {
-    return motionTransform(layout[key].motion, this.ticks, this.weights[key] || 0);
+    return partTransform(layout[key], this.ticks, this.weights);
   };
 
   function newPose() {
@@ -142,49 +237,85 @@
 
   /** 돌린 부위를 감싸는 사각형 (PartLayout.bounds 와 같은 계산). */
   function partBox(part) {
-    var rad = (part.rotation || 0) * Math.PI / 180;
-    var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
-    var hw = part.w / 2 * cos + part.h / 2 * sin;
-    var hh = part.w / 2 * sin + part.h / 2 * cos;
+    var half = halfExtents(part);
     var cx = part.x + part.w / 2, cy = part.y + part.h / 2;
     return {
-      minX: Math.floor(cx - hw + 1e-6), maxX: Math.ceil(cx + hw - 1e-6),
-      minY: Math.floor(cy - hh + 1e-6), maxY: Math.ceil(cy + hh - 1e-6)
+      minX: Math.floor(cx - half[0] + 1e-6), maxX: Math.ceil(cx + half[0] - 1e-6),
+      minY: Math.floor(cy - half[1] + 1e-6), maxY: Math.ceil(cy + half[1] - 1e-6)
     };
   }
 
-  function halfExtents(part, degrees, scale) {
-    var rad = degrees * Math.PI / 180;
+  function halfExtents(part) {
+    var rad = (part.rotation || 0) * Math.PI / 180;
     var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
-    return [(part.w / 2 * cos + part.h / 2 * sin) * scale, (part.w / 2 * sin + part.h / 2 * cos) * scale];
+    return [part.w / 2 * cos + part.h / 2 * sin, part.w / 2 * sin + part.h / 2 * cos];
   }
 
-  /** 움직임까지 넣은 범위 (PartLayout.motionBounds). */
+  /** 중심점 (몸통 기준 좌표, 부위 회전까지 반영: PartLayout.Part.pivotPoint). */
+  function pivotPoint(part) {
+    var ox = part.pivot === "left" ? -part.w / 2 : part.pivot === "right" ? part.w / 2 : 0;
+    var oy = part.pivot === "top" ? -part.h / 2 : part.pivot === "bottom" ? part.h / 2 : 0;
+    var rad = (part.rotation || 0) * Math.PI / 180;
+    var cos = Math.cos(rad), sin = Math.sin(rad);
+    return { x: part.x + part.w / 2 + ox * cos - oy * sin, y: part.y + part.h / 2 + ox * sin + oy * cos };
+  }
+
+  /** 애니메이션 하나가 가장 크게 움직이는 값: [돌기, 옆, 위, 아래, 커지는 배율] (PartLayout.reach). */
+  function reach(a, withPose) {
+    var m = a.motion;
+    var e = !motionActive(m) ? [0, 0, 0, 1] : m.type === "swing" ? [m.size * 3, 0, 0, 1] : m.type === "bob" ? [0, m.size, 0, 1]
+      : m.type === "sway" ? [0, 0, m.size, 1] : m.type === "breathe" ? [0, 0, 0, 1 + m.size * 0.02] : [0, 0, 0, 1];
+    return [
+      e[0] + (withPose ? Math.abs(a.rotation) : 0),
+      e[2] + (withPose ? Math.abs(a.dx) : 0),
+      e[1] + (withPose ? Math.max(0, -a.dy) : 0),
+      withPose ? Math.max(0, a.dy) : 0,
+      e[3]
+    ];
+  }
+
+  /** 애니메이션까지 넣은 범위, 넉넉하게 (PartLayout.motionBounds). */
   function motionBounds(layout, withRaise) {
     var b = bounds(layout, withRaise);
     PART_KEYS.forEach(function (key) {
       var part = layout[key];
-      var m = part.motion;
-      if (!motionActive(m)) {
+      if (!partAnimated(part)) {
         return;
       }
-      var e = m.type === "swing" ? [m.size * 3, 0, 0, 1] : m.type === "bob" ? [0, m.size, 0, 1]
-        : m.type === "sway" ? [0, 0, m.size, 1] : m.type === "breathe" ? [0, 0, 0, 1 + m.size * 0.02] : [0, 0, 0, 1];
-      var rotation = part.rotation || 0;
-      var half = halfExtents(part, rotation, e[3]);
-      if (e[0] > 0) {
-        for (var i = -8; i <= 8; i++) {
-          var turned = halfExtents(part, rotation + e[0] * i / 8, e[3]);
-          half[0] = Math.max(half[0], turned[0]);
-          half[1] = Math.max(half[1], turned[1]);
+      var always = reach(part.animations.always, false);
+      var most = [0, 0, 0, 0, 1];
+      STATES.forEach(function (state) {
+        if (state === "always") {
+          return;
         }
+        var r = reach(part.animations[state], true);
+        for (var i = 0; i < 5; i++) {
+          most[i] = Math.max(most[i], r[i]);
+        }
+      });
+      var turn = always[0] + most[0], side = always[1] + most[1], up = always[2] + most[2], down = always[3] + most[3];
+      var scale = always[4] * most[4];
+      var pivot = pivotPoint(part);
+      var half = halfExtents(part);
+      var cx = part.x + part.w / 2, cy = part.y + part.h / 2;
+      var left, right, top, bottom;
+      if (turn > 0) {
+        var radius = Math.hypot(Math.abs(cx - pivot.x) + half[0], Math.abs(cy - pivot.y) + half[1]) * scale;
+        left = pivot.x - radius;
+        right = pivot.x + radius;
+        top = pivot.y - radius;
+        bottom = pivot.y + radius;
+      } else {
+        left = pivot.x + (cx - half[0] - pivot.x) * scale;
+        right = pivot.x + (cx + half[0] - pivot.x) * scale;
+        top = pivot.y + (cy - half[1] - pivot.y) * scale;
+        bottom = pivot.y + (cy + half[1] - pivot.y) * scale;
       }
       var arm = key === "leftArm" || key === "rightArm";
-      var cx = part.x + part.w / 2, cy = part.y + part.h / 2;
-      b.minX = Math.min(b.minX, Math.floor(cx - half[0] - e[2]));
-      b.maxX = Math.max(b.maxX, Math.ceil(cx + half[0] + e[2]));
-      b.minY = Math.min(b.minY, Math.floor(cy - half[1] - e[1]) - (arm && withRaise ? ARM_RAISE : 0));
-      b.maxY = Math.max(b.maxY, Math.ceil(cy + half[1]));
+      b.minX = Math.min(b.minX, Math.floor(left - side));
+      b.maxX = Math.max(b.maxX, Math.ceil(right + side));
+      b.minY = Math.min(b.minY, Math.floor(top - up - (arm && withRaise ? ARM_RAISE : 0)));
+      b.maxY = Math.max(b.maxY, Math.ceil(bottom + down));
     });
     return b;
   }
@@ -203,17 +334,28 @@
     return b;
   }
 
-  /** 부위 가운데(캔버스 좌표)를 기준으로 돌리고 움직인다 (mt: 움직임 모양, k: 1px 크기). */
-  function transformAround(ctx, rotation, cx, cy, mt, k) {
+  /**
+   * 부위를 그릴 좌표계로 바꾼다 (PetApp.applyPartTransform 과 같은 순서):
+   * 애니메이션(옮기기 + 중심점 기준 돌리기·늘이기) 다음에 부위 자체 회전(가운데 기준).
+   * left, top: 부위 왼쪽 위의 캔버스 좌표, k: 1px 크기.
+   */
+  function applyPartTransform(ctx, part, left, top, mt, k) {
     var m = mt || NO_MOTION;
-    var turn = (rotation || 0) + m.rotation;
-    if (!turn && !m.dx && !m.dy && m.scaleX === 1 && m.scaleY === 1) {
-      return;
+    var pivot = pivotPoint(part);
+    var px = left + (pivot.x - part.x) * k, py = top + (pivot.y - part.y) * k;
+    ctx.translate(m.dx * k, m.dy * k);
+    if (m.rotation || m.scaleX !== 1 || m.scaleY !== 1) {
+      ctx.translate(px, py);
+      ctx.rotate(m.rotation * Math.PI / 180);
+      ctx.scale(m.scaleX, m.scaleY);
+      ctx.translate(-px, -py);
     }
-    ctx.translate(cx + m.dx * k, cy + m.dy * k);
-    ctx.rotate(turn * Math.PI / 180);
-    ctx.scale(m.scaleX, m.scaleY);
-    ctx.translate(-cx, -cy);
+    if (part.rotation) {
+      var cx = left + part.w / 2 * k, cy = top + part.h / 2 * k;
+      ctx.translate(cx, cy);
+      ctx.rotate(part.rotation * Math.PI / 180);
+      ctx.translate(-cx, -cy);
+    }
   }
 
   // ---------------------------------------------------------------- 그리기
@@ -268,7 +410,7 @@
     var x = part.x + dx, y = part.y + dy;
     var image = loadedImage(part.image);
     ctx.save();
-    transformAround(ctx, part.rotation, ox + (x + part.w / 2) * k, oy + (y + part.h / 2) * k, mt, k);
+    applyPartTransform(ctx, part, ox + x * k, oy + y * k, mt, k);
     if (image) {
       drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, part.flip);
     } else {
@@ -283,7 +425,7 @@
     var p = pose || newPose();
     var L = layout || DEFAULT_LAYOUT;
     function mt(key) {
-      return p.motion && L[key].motion ? p.motion.transform(L, key) : NO_MOTION;
+      return p.motion && L[key].animations ? p.motion.transform(L, key) : NO_MOTION;
     }
     // 몸통, 다리 (앱과 같은 순서로 그린다)
     drawPart(ctx, ox, oy, k, L.body, 0, 0, color, mt("body"));
@@ -304,7 +446,7 @@
     var expression = expressionOf(p);
     var image = loadedImage(eyes.images && eyes.images[expression]);
     ctx.save();
-    transformAround(ctx, eyes.rotation, ox + (eyes.x + eyes.w / 2) * k, oy + (eyes.y + eyes.h / 2) * k, mt, k);
+    applyPartTransform(ctx, eyes, ox + eyes.x * k, oy + eyes.y * k, mt, k);
     if (image) {
       drawImage(ctx, image, ox + (eyes.x + p.eyeShift) * k, oy + eyes.y * k, eyes.w * k, eyes.h * k, false);
       ctx.restore();
@@ -550,7 +692,7 @@
     }
     p.swayX = Math.sin(this.swayPhase) * LIMB_SWAY_MAX_X * this.swayAmp;
 
-    this.motion.tick(this.layout, this.airborne ? "air" : (walking ? "walk" : "idle"));
+    this.motion.tick(this.airborne ? "air" : (walking ? "walk" : "idle"));
     p.motion = this.motion;
   };
 
@@ -580,8 +722,14 @@
     bounds: bounds,
     motionBounds: motionBounds,
     MotionClock: MotionClock,
+    STATES: STATES,
+    motionTypesFor: motionTypesFor,
     defaultMotion: defaultMotion,
-    mirroredMotion: mirroredMotion,
+    normalizePart: normalizePart,
+    mirroredAnimation: mirroredAnimation,
+    mirroredPivot: mirroredPivot,
+    pivotPoint: pivotPoint,
+    partTransform: partTransform,
     prepare: prepare,
     newPose: newPose,
     drawBitAt: drawBitAt,

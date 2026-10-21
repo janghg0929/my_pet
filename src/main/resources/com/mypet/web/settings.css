@@ -295,7 +295,7 @@ button {
 
 .parts-canvas {
   width: 100%;
-  height: 180px;
+  height: 170px;
   display: block;
 }
 
@@ -337,13 +337,35 @@ button {
   margin-top: 10px;
 }
 
-.motion-when {
+.anim-states {
   grid-template-columns: repeat(5, 1fr);
-  margin-top: 8px;
+  margin-top: 10px;
+}
+
+.anim-fields {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.part-fields select {
+  width: 100%;
+  height: 26px;
+  padding: 0 2px;
+  border: var(--border) solid var(--ink);
+  border-radius: 0;
+  background: var(--box);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+
+.part-fields input:disabled {
+  color: var(--muted);
+  background: var(--hover);
 }
 
 .motion-types .seg,
-.motion-when .seg {
+.anim-states .seg {
   height: 26px;
   padding: 0;
   font-size: 11px;
@@ -381,11 +403,6 @@ button {
   margin-top: 8px;
 }
 
-.motion-hint {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-}
 
 .eye-tabs .seg {
   height: 24px;
