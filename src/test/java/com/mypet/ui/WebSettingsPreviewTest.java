@@ -470,6 +470,26 @@ class WebSettingsPreviewTest {
 		assertTrue(photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart, "키 사진 / 이어서");
 		snapshot(settings[0], new File(out, "web-parts-keyphoto.png"));
 		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').title + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
+		// 마우스를 올리면 이름표 (앱 안 웹 엔진은 title 풍선을 안 띄워서 직접)
+		runScript(settings[0], "document.getElementById('tl-draw').dispatchEvent(new MouseEvent('mouseover', { bubbles: true }))");
+		Thread.sleep(600);
+		String tooltip = evalScript(settings[0], "var t = document.querySelector('.tooltip'); t && !t.hidden ? t.textContent : 'none'");
+		snapshot(settings[0], new File(out, "web-tooltip.png"));
+		System.out.println("tooltip on brush: " + tooltip);
+		assertTrue(tooltip.contains("그림판"), "붓 버튼 이름표");
+		runScript(settings[0], "document.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))");
+		// 진짜 마우스 움직임으로 [사진 빼기] 위에 올려 두기
+		String photoOff = evalScript(settings[0], "var b = document.getElementById('tl-photo-remove').getBoundingClientRect();"
+			+ " Math.round(b.left + b.width / 2) + ',' + Math.round(b.top + b.height / 2)");
+		String[] hover = photoOff.split(",");
+		SwingUtilities.invokeAndWait(() -> panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_MOVED,
+			System.currentTimeMillis(), 0, Integer.parseInt(hover[0]), Integer.parseInt(hover[1]), 0, false)));
+		Thread.sleep(700);
+		String realTip = evalScript(settings[0], "var t = document.querySelector('.tooltip'); t && !t.hidden ? t.textContent : 'none'");
+		System.out.println("tooltip on real hover over photo-remove: " + realTip);
+		assertTrue(realTip.contains("사진 빼기"), "진짜 마우스로 올려도 이름표");
+		snapshot(settings[0], new File(out, "web-tooltip.png"));
+
 		// 고급 [그리기]: 지금 시간(0.6초) 키에 그린 그림이 들어간다
 		runScript(settings[0], "document.getElementById('tl-draw').click(); document.getElementById('paint-save').click();");
 		Thread.sleep(700);

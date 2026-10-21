@@ -82,8 +82,9 @@
       if (!el.textContent.trim()) {
         el.classList.add("icon-only");
       }
-      if (el.title && !el.getAttribute("aria-label")) {
-        el.setAttribute("aria-label", el.title);
+      var name = el.title || el.getAttribute("data-tip");
+      if (name && !el.getAttribute("aria-label")) {
+        el.setAttribute("aria-label", name);
       }
     });
   }

@@ -463,6 +463,24 @@ button {
   margin-bottom: 3px;
 }
 
+/* 마우스를 올리면 뜨는 이름표 (tooltip.js) */
+.tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 260px;
+  padding: 4px 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 11px;
+  line-height: 1.4;
+  box-shadow: 2px 2px 0 var(--shadow-color);
+  pointer-events: none;
+}
+
+.tooltip[hidden] {
+  display: none;
+}
+
 /* 버튼 그림 (icons.js): 글씨 앞에, 그림만 있으면 가운데 */
 .icon {
   display: inline-block;
