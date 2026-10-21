@@ -520,6 +520,12 @@ class WebSettingsPreviewTest {
 			&& airClip.track("rightArm").get(1).rotation == -120, "고급 시간 막대 키");
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "고급 탭도 창 크기 그대로: " + settings[0].dialog().getHeight());
 		snapshot(settings[0], new File(out, "web-parts-advanced.png"));
+		// ◆ 는 화면에 있는 부위의 키만 본다: 키가 있는 양팔을 빼면 "공중" 의 ◆ 가 없어지고, 다시 넣으면 돌아온다 (키는 그대로)
+		String diamonds = evalScript(settings[0], "var ed = window.bitPartsEditor; function air() { ed.refreshControls(); return document.querySelector('#tl-states [data-key=air]').textContent; }"
+			+ " var sel = ed.selected; var before = air(); ed.layout.leftArm.visible = false; ed.layout.rightArm.visible = false; var hidden = air();"
+			+ " ed.layout.leftArm.visible = true; ed.layout.rightArm.visible = true; ed.selected = sel; before + '|' + hidden + '|' + air() + '|' + ed.layout.timeline.air.tracks.leftArm.length");
+		System.out.println("◆ with arms shown/hidden/shown: " + diamonds);
+		assertTrue("공중 ◆|공중|공중 ◆|2".equals(diamonds), "뺀 부위의 키는 ◆ 에 안 셈: " + diamonds);
 		System.out.println("advanced photo buttons: " + evalScript(settings[0], "document.getElementById('tl-photo').title + ' / '"
 			+ " + document.getElementById('tl-photo-remove').disabled + ' / transport fits=' + (document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)"));
 		assertTrue(evalScript(settings[0], "String(document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)").equals("true"),

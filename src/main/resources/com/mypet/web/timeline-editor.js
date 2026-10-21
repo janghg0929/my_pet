@@ -361,9 +361,10 @@
     Array.prototype.forEach.call(document.querySelectorAll("#tl-states .seg"), function (button) {
       var state = button.getAttribute("data-key");
       button.classList.toggle("selected", state === tl.state);
-      // 키가 있는 상황은 ◆ 표시
+      // 키가 있는 상황은 ◆ 표시 (화면에 있는 부위의 키만: 뺀 부위의 키는 남겨 두지만 줄이 안 보이니까)
+      var visible = self.pickerKeys();
       var hasKeys = Object.keys(self.layout.timeline[state].tracks).some(function (part) {
-        return self.layout.timeline[state].tracks[part].length > 0;
+        return visible.indexOf(part) >= 0 && self.layout.timeline[state].tracks[part].length > 0;
       });
       BV.setText(button, STATE_LABELS[state] + (hasKeys ? " ◆" : ""));
     });
