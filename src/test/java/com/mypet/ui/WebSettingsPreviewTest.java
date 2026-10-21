@@ -225,6 +225,10 @@ class WebSettingsPreviewTest {
 		Thread.sleep(700);
 		SwingUtilities.invokeAndWait(() -> System.out.println("after main→parts: " + edges(settings[0].dialog())));
 		int partsHeight = settings[0].dialog().getHeight();
+		// 모습 꾸미기는 넓은 창 (내용 540px), 다른 화면은 360px
+		int partsWidth = settings[0].dialog().getWidth();
+		System.out.println("parts width=" + partsWidth + " canvas=" + evalScript(settings[0], "String(document.getElementById('parts-canvas').clientWidth)"));
+		assertTrue(partsWidth >= 540, "모습 꾸미기 창 너비: " + partsWidth);
 		snapshot(settings[0], new File(out, "web-parts.png"));
 		runScript(settings[0], "var w = document.getElementById('parts-w'); w.value = '60'; w.dispatchEvent(new Event('input'));");
 		Thread.sleep(700);
@@ -389,6 +393,10 @@ class WebSettingsPreviewTest {
 		runScript(settings[0], "document.querySelector('.back').click()");
 		Thread.sleep(300);
 		assertTrue("모습 꾸미기".equals(evalScript(settings[0], "document.getElementById('title').textContent")), "저장한 모습 → 뒤로가기는 모습 꾸미기");
+		runScript(settings[0], "document.querySelector('.back').click()");
+		Thread.sleep(500);
+		System.out.println("back to main: " + edges(settings[0].dialog()) + " width=" + settings[0].dialog().getWidth());
+		assertTrue(settings[0].dialog().getWidth() < partsWidth - 100, "메인으로 돌아가면 원래 너비");
 
 		SwingUtilities.invokeAndWait(() -> settings[0].dialog().dispose());
 		System.out.println("web preview saved: " + out.getAbsolutePath());

@@ -154,9 +154,17 @@
   }
   window.bitContentHeight = contentHeight;
 
+  // 화면별 창 내용 너비 (없으면 기본 360). 모습 꾸미기는 미리보기·시간 막대가 넓어지도록
+  var VIEW_WIDTHS = { parts: 540 };
+
+  function contentWidth() {
+    return VIEW_WIDTHS[currentView] || 360;
+  }
+  window.bitContentWidth = contentWidth;
+
   function fitWindow() {
     // 내용 높이에 맞춰 창 크기를 조절해 달라고 Java 에 요청
-    send("resize", contentHeight());
+    send("resize", contentHeight(), contentWidth());
   }
 
   function show(view) {
@@ -547,6 +555,15 @@
       getColor: function () { return state ? state.baseColor : "#4fc3f7"; }
     });
   }
+  // 창 너비가 바뀌면(화면마다 너비가 다르다) 줄바꿈이 달라질 수 있어 높이를 다시 잰다
+  var refitTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(refitTimer);
+    refitTimer = setTimeout(function () {
+      fitWindow();
+      reportSearchBox();
+    }, 50);
+  });
   var search = document.getElementById("appearance-search");
   // 일반 브라우저 미리보기에서는 이 HTML 입력칸을 그대로 쓴다
   search.addEventListener("input", function () {

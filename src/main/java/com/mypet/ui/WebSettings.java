@@ -53,7 +53,10 @@ import java.util.function.Consumer;
  * 그래서 입력칸을 별도 창으로 분리하고, 글자가 바뀔 때마다 window.bitSearch(검색어) 로 넘긴다.
  */
 public final class WebSettings implements SettingsHost.View {
+	/** 기본 내용 너비. 화면마다 더 넓게 달라고 할 수 있다 (모습 꾸미기 등: settings.js 의 VIEW_WIDTHS). */
 	private static final int WIDTH = 360;
+	private static final int MIN_WIDTH = 300;
+	private static final int MAX_WIDTH = 900;
 
 	private final SettingsHost host;
 	private final JDialog dialog;
@@ -308,13 +311,15 @@ public final class WebSettings implements SettingsHost.View {
 	/** (JavaFX 스레드) 내용 높이를 재서 창 크기를 맞춘다. */
 	private void resizeToContent() {
 		Object height = engine.executeScript("window.bitContentHeight ? window.bitContentHeight() : document.body.offsetHeight");
+		Object width = engine.executeScript("window.bitContentWidth ? window.bitContentWidth() : " + WIDTH);
 		if (height instanceof Number number) {
 			int contentHeight = (int) Math.ceil(number.doubleValue());
-			SwingUtilities.invokeLater(() -> resizeTo(contentHeight));
+			int contentWidth = width instanceof Number w ? w.intValue() : WIDTH;
+			SwingUtilities.invokeLater(() -> resizeTo(contentHeight, contentWidth));
 		}
 	}
 
-	private void resizeTo(int contentHeight) {
+	private void resizeTo(int contentHeight, int contentWidth) {
 		// 제목 표시줄/테두리 두께: getInsets() 가 틀리게 나오는 경우가 있어 실제 내용 영역 크기와의 차이로 잰다.
 		// 크기를 바꾼 직후에는 내용 영역이 아직 예전 크기라 잘못 재지므로, 처음 한 번만 재서 기억한다.
 		if (frameExtraWidth < 0 || frameExtraHeight < 0) {
@@ -328,16 +333,18 @@ public final class WebSettings implements SettingsHost.View {
 			frameExtraWidth = extraWidth;
 			frameExtraHeight = extraHeight;
 		}
-		int width = WIDTH + frameExtraWidth;
+		int width = Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, contentWidth)) + frameExtraWidth;
 		int height = contentHeight + frameExtraHeight;
 		if (dialog.getWidth() != width || dialog.getHeight() != height) {
 			if (!placedOnce) {
 				dialog.setSize(width, height);
 				host.placeSettingsDialog(dialog);
 			} else {
-				// 창 아래쪽 끝을 기준으로 크기를 바꾼다 (길어지면 위로 자라서 바닥에 붙지 않게)
+				// 창 아래쪽 끝을 기준으로 크기를 바꾼다 (길어지면 위로 자라서 바닥에 붙지 않게).
+				// 너비가 바뀌면 가운데를 기준으로 양쪽으로 넓어지고 좁아진다
 				int bottom = dialog.getY() + dialog.getHeight();
-				dialog.setBounds(dialog.getX(), bottom - height, width, height);
+				int centerX = dialog.getX() + dialog.getWidth() / 2;
+				dialog.setBounds(centerX - width / 2, bottom - height, width, height);
 				keepOnScreen();
 			}
 		}
@@ -487,10 +494,11 @@ public final class WebSettings implements SettingsHost.View {
 			});
 		}
 
-		public void resize(Object contentHeight) {
+		public void resize(Object contentHeight, Object contentWidth) {
 			if (contentHeight instanceof Number number) {
 				int height = (int) Math.ceil(number.doubleValue());
-				SwingUtilities.invokeLater(() -> resizeTo(height));
+				int width = contentWidth instanceof Number w ? w.intValue() : WIDTH;
+				SwingUtilities.invokeLater(() -> resizeTo(height, width));
 			}
 		}
 	}
