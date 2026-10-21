@@ -10,7 +10,7 @@
     { key: "off", label: "끔" },
     { key: "always", label: "항상 켬" }
   ];
-  var TITLES = { main: "비트 설정", appearance: "외형 설정", color: "색깔 설정" };
+  var TITLES = { main: "비트 설정", appearance: "외형 설정", color: "색깔 설정", parts: "모습 꾸미기" };
 
   // 외형 목록. 새 외형을 추가하면 여기에 한 줄 넣으면 된다 (Java 쪽 PetApp.setAppearanceMode 에도 key 추가).
   // keywords: 검색에 걸리는 말 (외형 이름, 앱 이름 - 한글/영어). 띄어쓰기와 대소문자는 무시하고 찾는다.
@@ -60,6 +60,13 @@
   var currentView = "main";
 
   var stage = null; // 색깔 설정의 걷기/점프 미리보기
+  var editor = null; // 모습 꾸미기 편집기 (parts-editor.js)
+  var requestedImages = {}; // Java 에 달라고 한 부위 사진
+
+  /** 모습 꾸미기 배치 (Java 가 보낸 값, 없으면 기본 비트). */
+  function currentLayout() {
+    return state && state.parts ? state.parts : window.BitView.DEFAULT_LAYOUT;
+  }
 
   function drawIcons() {
     if (!state || !window.BitView) {
@@ -67,9 +74,49 @@
     }
     var icons = document.querySelectorAll(".bit-icon");
     for (var i = 0; i < icons.length; i++) {
-      window.BitView.drawIcon(icons[i], state.petColor);
+      window.BitView.drawIcon(icons[i], state.petColor, currentLayout());
     }
   }
+
+  /** 배치에 쓰인 부위 사진 중 아직 없는 것을 Java 에 달라고 한다 (window.bitImage 로 온다). */
+  function requestImages(layout) {
+    var names = [];
+    window.BitView.PART_KEYS.forEach(function (key) {
+      var part = layout[key];
+      if (part.image) {
+        names.push(part.image);
+      }
+      if (part.images) {
+        Object.keys(part.images).forEach(function (expr) {
+          if (part.images[expr]) {
+            names.push(part.images[expr]);
+          }
+        });
+      }
+    });
+    names.forEach(function (name) {
+      if (!window.BitView.images[name] && !requestedImages[name]) {
+        requestedImages[name] = true;
+        send("requestImage", name);
+      }
+    });
+  }
+
+  // (Java 가 부름) 부위 사진 도착
+  window.bitImage = function (name, dataUrl) {
+    if (!dataUrl) {
+      return;
+    }
+    var image = new Image();
+    image.onload = function () {
+      drawIcons();
+      if (editor) {
+        editor.draw();
+      }
+    };
+    image.src = dataUrl;
+    window.BitView.images[name] = image;
+  };
 
   function send(method) {
     var args = Array.prototype.slice.call(arguments, 1);
@@ -117,6 +164,10 @@
       } else {
         stage.stop();
       }
+    }
+    if (view === "parts" && editor) {
+      editor.refreshControls();
+      editor.draw();
     }
     fitWindow();
     reportSearchBox();
@@ -312,16 +363,22 @@
 
     document.getElementById("version").textContent = "v" + state.version;
     document.getElementById("hex").textContent = state.baseColor.toUpperCase();
+    var layout = currentLayout();
+    requestImages(layout);
     drawIcons();
     // 색깔 미리보기는 (디스코드 색이 아닌) 원래 몸 색으로 보여준다
     if (stage) {
       stage.color = state.baseColor;
+      stage.layout = layout;
+    }
+    if (editor) {
+      editor.setLayout(layout);
     }
 
     renderAppearanceList();
 
     if (state.status) {
-      var target = currentView === "color" ? "color-status" : "appearance-status";
+      var target = currentView === "color" ? "color-status" : (currentView === "parts" ? "parts-status" : "appearance-status");
       document.getElementById(target).textContent = state.status;
     }
     if (currentView === "color" && !state.status) {
@@ -359,6 +416,17 @@
 
   if (window.BitView) {
     stage = new window.BitView.Stage(document.querySelector(".bit-stage"));
+  }
+  if (window.PartsEditor) {
+    editor = new window.PartsEditor({
+      send: send,
+      getColor: function () { return state ? state.baseColor : "#4fc3f7"; },
+      onHeightChange: function () {
+        if (currentView === "parts") {
+          fitWindow();
+        }
+      }
+    });
   }
   var search = document.getElementById("appearance-search");
   // 일반 브라우저 미리보기에서는 이 HTML 입력칸을 그대로 쓴다

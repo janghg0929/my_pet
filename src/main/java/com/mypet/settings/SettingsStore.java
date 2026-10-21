@@ -3,6 +3,7 @@ package com.mypet.settings;
 import com.mypet.Constants;
 import com.mypet.Util;
 import com.mypet.appearance.AppearanceMode;
+import com.mypet.parts.PartLayout;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,7 +24,8 @@ import java.util.Map;
  *   "version": 1,
  *   "characterColor": "#4fc3f7",        // 직접 고른 몸 색 (기본 색이면 null)
  *   "customColors": ["#ffffff", ...],    // 색 선택 창의 사용자 지정 색 16칸
- *   "appearance": { "browserMonocle": "auto", ... }   // 외형별 auto / off / always
+ *   "appearance": { "browserMonocle": "auto", ... },  // 외형별 auto / off / always
+ *   "parts": { "symmetric": true, "body": {"x":0,"y":0,"w":44,"h":28,"image":null,"flip":false}, ... }  // 모습 꾸미기
  * }
  * </pre>
  * settings.json 이 없으면 예전 형식의 텍스트 파일(파이썬 버전, 2.0.0)을 찾아서 옮기고 예전 파일은 지운다.
@@ -49,6 +51,8 @@ public final class SettingsStore {
 	private String characterColor;
 	private List<String> customColors = defaultCustomColors();
 	private final Map<String, AppearanceMode> appearance = new LinkedHashMap<>();
+	/** 모습 꾸미기 (부위 위치·크기·사진). */
+	private PartLayout parts = PartLayout.defaults();
 
 	public SettingsStore(Path file, List<Path> legacyColorPaths, List<Path> legacyCustomColorPaths, List<Path> legacyAppearancePaths) {
 		this.file = file;
@@ -101,6 +105,15 @@ public final class SettingsStore {
 		return appearance.getOrDefault(key, AppearanceMode.AUTO);
 	}
 
+	/** 모습 꾸미기 배치 (복사본). */
+	public synchronized PartLayout parts() {
+		return parts.copy();
+	}
+
+	public synchronized void setParts(PartLayout layout) {
+		parts = layout == null ? PartLayout.defaults() : layout.copy();
+	}
+
 	public synchronized void setAppearance(String key, AppearanceMode mode) {
 		appearance.put(key, mode == null ? AppearanceMode.AUTO : mode);
 	}
@@ -118,6 +131,7 @@ public final class SettingsStore {
 			modes.put(entry.getKey(), entry.getValue().key);
 		}
 		root.put("appearance", modes);
+		root.put("parts", parts.toJson());
 		try {
 			Files.createDirectories(file.getParent());
 			// 쓰다가 꺼져도 파일이 깨지지 않게: 임시 파일에 쓰고 바꿔 끼운다
@@ -169,6 +183,9 @@ public final class SettingsStore {
 				}
 			}
 			customColors = normalizeSlots(colors);
+		}
+		if (root.containsKey("parts")) {
+			parts = PartLayout.fromJson(root.get("parts"));
 		}
 		if (root.get("appearance") instanceof Map<?, ?> modes) {
 			for (String key : APPEARANCE_KEYS) {

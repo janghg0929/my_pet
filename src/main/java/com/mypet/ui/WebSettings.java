@@ -418,6 +418,48 @@ public final class WebSettings implements SettingsHost.View {
 			}
 		}
 
+		// ---- 모습 꾸미기
+
+		public void setParts(Object layoutJson) {
+			if (layoutJson != null) {
+				String json = String.valueOf(layoutJson);
+				SwingUtilities.invokeLater(() -> host.setParts(json));
+			}
+		}
+
+		public void pickPartImage(Object part, Object expression) {
+			String partKey = part == null ? null : String.valueOf(part);
+			String expressionKey = expression == null ? null : String.valueOf(expression);
+			SwingUtilities.invokeLater(() -> host.pickPartImage(partKey, expressionKey));
+		}
+
+		public void removePartImage(Object part, Object expression) {
+			String partKey = part == null ? null : String.valueOf(part);
+			String expressionKey = expression == null ? null : String.valueOf(expression);
+			SwingUtilities.invokeLater(() -> host.removePartImage(partKey, expressionKey));
+		}
+
+		public void resetParts() {
+			SwingUtilities.invokeLater(host::resetParts);
+		}
+
+		/** JS 가 아직 없는 부위 사진을 달라고 하면 data URL 을 window.bitImage(이름, url) 로 보낸다. */
+		public void requestImage(Object fileName) {
+			if (fileName == null) {
+				return;
+			}
+			String name = String.valueOf(fileName);
+			SwingUtilities.invokeLater(() -> {
+				String url = host.partImageDataUrl(name);
+				Platform.runLater(() -> {
+					if (loaded) {
+						engine.executeScript("window.bitImage && window.bitImage(" + jsString(name) + ", "
+							+ (url == null ? "null" : jsString(url)) + ")");
+					}
+				});
+			});
+		}
+
 		public void resize(Object contentHeight) {
 			if (contentHeight instanceof Number number) {
 				int height = (int) Math.ceil(number.doubleValue());

@@ -16,6 +16,21 @@ public interface SettingsHost {
 	/** 색 선택 창 열기. */
 	void pickCustomColor();
 
+	/** 모습 꾸미기: 부위 배치 적용 (PartLayout JSON 문자열). */
+	void setParts(String layoutJson);
+
+	/** 모습 꾸미기: 부위 사진 고르기 (눈이면 expression = neutral/grab/fall). */
+	void pickPartImage(String part, String expression);
+
+	/** 모습 꾸미기: 부위 사진 빼기. */
+	void removePartImage(String part, String expression);
+
+	/** 모습 꾸미기: 기본 비트로 되돌리기. */
+	void resetParts();
+
+	/** 부위 사진을 설정 화면에 보낼 data URL (없으면 null). */
+	String partImageDataUrl(String fileName);
+
 	/** 설정 창 닫기. */
 	void closeSettings();
 

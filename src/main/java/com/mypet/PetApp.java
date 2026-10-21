@@ -8,8 +8,12 @@ import com.mypet.appearance.ColorChooserDialog;
 import com.mypet.appearance.ColorSettings;
 import com.mypet.appearance.rendering.AppearanceRendering;
 import com.mypet.appearance.rendering.Draw;
+import com.mypet.parts.PartImages;
+import com.mypet.parts.PartLayout;
 import com.mypet.platform.PlatformSupport;
 import com.mypet.platform.PlatformSupport.PlatformRect;
+import com.mypet.settings.Json;
+import com.mypet.settings.SettingsStore;
 import com.mypet.ui.SettingsHost;
 import com.mypet.ui.Ui;
 import com.mypet.update.UpdateService;
@@ -41,6 +45,7 @@ import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.PointerInfo;
 import java.awt.Rectangle;
+import java.awt.RenderingHints;
 import java.awt.Toolkit;
 import java.awt.Window;
 import java.awt.event.ActionEvent;
@@ -180,30 +185,32 @@ final class PetApp implements SettingsHost {
 	private double rainbowElapsedMs = 0.0;
 	private double rainbowPhase = 0.0;
 
-	// 캐릭터 도형 기준 좌표
+	// 캐릭터 도형 기준 좌표.
+	// 부위 배치(모습 꾸미기)의 좌표는 "몸통 기본 위치 = 0,0" 기준이고, charOriginX/Y 가 그 0,0 이 창 안의 어디인지다.
+	private PartLayout layout = PartLayout.defaults();
+	private final PartImages partImages = PartImages.standard();
+	private PartLayout.Bounds layoutBounds = layout.bounds(Math.max(2, LIMB_SIZE));
 	private double charOriginX = DRAW_MARGIN + APPEARANCE_EXTRA_MARGIN + SIDE_EXTENSION;
-	private final double charOriginY = DRAW_MARGIN + HEART_TOP_HEADROOM;
+	private double charOriginY = DRAW_MARGIN + HEART_TOP_HEADROOM;
+	private int windowHeight = WINDOW_HEIGHT;
+	private boolean geometryReady;
+	/** 기본 몸통 크기 (눈 모양과 외형 소품 크기 계산용 - 꾸며도 바뀌지 않는다). */
 	private final int charFaceWidth = CHAR_WIDTH - (DRAW_MARGIN * 2);
 	private final int charFaceHeight = CHAR_HEIGHT - (DRAW_MARGIN * 2);
 	private final double eyeShapeScale = Math.min(charFaceWidth, charFaceHeight) / (double) BASE_FACE_SIZE;
 	private final double eyeShapeWidth = BASE_FACE_SIZE * eyeShapeScale;
 	private final double eyeShapeHeight = BASE_FACE_SIZE * eyeShapeScale;
-	private double eyeShapeOffsetX = charOriginX + ((charFaceWidth - eyeShapeWidth) / 2);
-	private final double eyeShapeOffsetY = charOriginY + ((charFaceHeight - eyeShapeHeight) / 2);
+	/** 기본 눈 모양의 기준점 (몸통 기준 좌표). */
+	private final double eyeShapeOffsetX = (charFaceWidth - eyeShapeWidth) / 2;
+	private final double eyeShapeOffsetY = (charFaceHeight - eyeShapeHeight) / 2;
 	private final int border = Math.max(1, Util.pyRound(2.0 * Math.min(charFaceWidth, charFaceHeight) / BASE_FACE_SIZE));
 
-	private final double armY = charOriginY + Math.floorDiv(charFaceHeight * 2, 3) - Math.floorDiv(LIMB_SIZE, 2);
 	private final int armRaiseOffset = Math.max(2, LIMB_SIZE);
-	private double leftArmLeft = charOriginX - LIMB_GAP - LIMB_SIZE;
-	private double leftArmRight = charOriginX - LIMB_GAP;
-	private double rightArmLeft = charOriginX + charFaceWidth + LIMB_GAP;
-	private double rightArmRight = charOriginX + charFaceWidth + LIMB_GAP + LIMB_SIZE;
-	private double armTopCurrent = armY;
-	private double armTopTarget = armY;
-	private final double legY = charOriginY + charFaceHeight + LIMB_GAP;
-	private double leftLegX = charOriginX + Math.floorDiv(charFaceWidth, 3) - Math.floorDiv(LIMB_SIZE, 2);
-	private double rightLegX = charOriginX + Math.floorDiv(charFaceWidth * 2, 3) - Math.floorDiv(LIMB_SIZE, 2);
-	private final double footContactOffset = legY + LIMB_SIZE;
+	/** 점프/낙하 때 팔을 드는 정도 (0 = 평소, -armRaiseOffset = 든 상태). */
+	private double armLiftCurrent = 0;
+	private double armLiftTarget = 0;
+	/** 창 위쪽에서 발(가장 아래 부위) 바닥까지의 거리. */
+	private double footContactOffset = DRAW_MARGIN + HEART_TOP_HEADROOM + 37;
 
 	private final double monocleRadius = Math.max(2.0, Math.min(charFaceWidth, charFaceHeight) * 0.2);
 	private final int monocleStroke = Math.max(2, Util.pyRound((border * 2) * MAGNIFIER_RING_THICKNESS));
@@ -244,6 +251,7 @@ final class PetApp implements SettingsHost {
 		discordAppearanceMode = settings.discordColor();
 		pixelHeartAppearanceMode = settings.pixelHeart();
 		headsetAppearanceMode = settings.headset();
+		layout = SettingsStore.get().parts();
 
 		// 작업 영역 (윈도우 작업표시줄, 맥 메뉴바/독 제외)
 		Rectangle work = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
@@ -251,9 +259,7 @@ final class PetApp implements SettingsHost {
 		workTop = work.y;
 		workRight = work.x + work.width;
 		workBottom = work.y + work.height;
-		maxX = workRight - windowWidth;
-		maxY = workBottom - WINDOW_HEIGHT;
-		minY = workTop - (DRAW_MARGIN + HEART_TOP_HEADROOM);
+		recomputeGeometry();
 
 		posX = Math.floor((workLeft + maxX) / 2);
 		posY = Math.floor((workTop + maxY) / 2);
@@ -267,6 +273,7 @@ final class PetApp implements SettingsHost {
 		fallPeakY = posY;
 		dragPrevX = posX;
 		dragPrevY = posY;
+		geometryReady = true;
 
 		WindowState windowState = AppearanceDetection.getWindowState(platform);
 		appMode = AppearanceDetection.resolveAppMode(windowState, null);
@@ -348,7 +355,7 @@ final class PetApp implements SettingsHost {
 	/** 창 좌표를 현재 상태로 적용. */
 	private void applyGeometry() {
 		double drawY = posY + walkBobCurrent;
-		Rectangle bounds = new Rectangle((int) posX, (int) drawY, (int) windowWidth, WINDOW_HEIGHT);
+		Rectangle bounds = new Rectangle((int) posX, (int) drawY, (int) windowWidth, windowHeight);
 		if (!bounds.equals(appliedBounds)) {
 			appliedBounds = bounds;
 			root.setBounds(bounds);
@@ -415,39 +422,79 @@ final class PetApp implements SettingsHost {
 		if (Math.abs(leftMargin - appearanceLeftMargin) < 0.01 && Math.abs(rightMargin - appearanceRightMargin) < 0.01) {
 			return;
 		}
-
-		double deltaLeft = leftMargin - appearanceLeftMargin;
 		appearanceLeftMargin = leftMargin;
 		appearanceRightMargin = rightMargin;
-		windowWidth = CHAR_WIDTH + (SIDE_EXTENSION * 2) + (DRAW_MARGIN * 2) + appearanceLeftMargin + appearanceRightMargin;
-		maxX = workRight - windowWidth;
+		recomputeGeometry();
+	}
 
-		charOriginX += deltaLeft;
-		eyeShapeOffsetX += deltaLeft;
-		leftArmLeft += deltaLeft;
-		leftArmRight += deltaLeft;
-		rightArmLeft += deltaLeft;
-		rightArmRight += deltaLeft;
-		leftLegX += deltaLeft;
-		rightLegX += deltaLeft;
-		for (PetHeart heart : petHearts) {
-			heart.x += deltaLeft;
-			heart.renderX += deltaLeft;
+	/** 모습 꾸미기 배치를 바꾼다 (화면 위 비트의 몸통 자리와 발 높이는 그대로). */
+	void applyLayout(PartLayout newLayout) {
+		layout = newLayout.copy();
+		recomputeGeometry();
+	}
+
+	/**
+	 * 부위 배치와 외형 여백으로 창 크기·기준점·발 높이를 다시 계산한다.
+	 * 이미 화면에 있으면 몸통의 가로 위치와 발 높이가 그대로이도록 창 위치를 옮긴다.
+	 */
+	private void recomputeGeometry() {
+		double oldOriginX = charOriginX;
+		double oldOriginY = charOriginY;
+		double oldFoot = footContactOffset;
+
+		layoutBounds = layout.bounds(armRaiseOffset);
+		double topExtra = Math.max(0, -layoutBounds.minY());
+		charOriginX = DRAW_MARGIN + appearanceLeftMargin - layoutBounds.minX();
+		charOriginY = DRAW_MARGIN + HEART_TOP_HEADROOM + topExtra;
+		windowWidth = charOriginX + layoutBounds.maxX() + (DRAW_MARGIN * 3) + appearanceRightMargin;
+		windowHeight = (int) Math.ceil(charOriginY + layoutBounds.maxY() + (DRAW_MARGIN * 3));
+		footContactOffset = charOriginY + layoutBounds.maxY();
+
+		maxX = workRight - windowWidth;
+		maxY = workBottom - windowHeight;
+		minY = workTop - (DRAW_MARGIN + HEART_TOP_HEADROOM + topExtra);
+		if (!geometryReady) {
+			return;
 		}
 
-		posX -= deltaLeft;
-		prevPosX -= deltaLeft;
-		targetX -= deltaLeft;
-		autoMoveTargetX -= deltaLeft;
-		dragPrevX -= deltaLeft;
-		dragOffsetX += deltaLeft;
+		double dx = charOriginX - oldOriginX;
+		double dy = footContactOffset - oldFoot;
+		double heartDy = charOriginY - oldOriginY;
+		for (PetHeart heart : petHearts) {
+			heart.x += dx;
+			heart.renderX += dx;
+			heart.y += heartDy;
+			heart.renderY += heartDy;
+		}
+		posX -= dx;
+		prevPosX -= dx;
+		targetX -= dx;
+		autoMoveTargetX -= dx;
+		dragPrevX -= dx;
+		dragOffsetX += dx;
+		posY -= dy;
+		prevPosY -= dy;
+		targetY -= dy;
+		fallPeakY -= dy;
+		dragPrevY -= dy;
+		dragOffsetY += dy;
 
 		posX = Util.clamp(posX, workLeft, maxX);
 		prevPosX = Util.clamp(prevPosX, workLeft, maxX);
 		targetX = Util.clamp(targetX, workLeft, maxX);
 		autoMoveTargetX = Util.clamp(autoMoveTargetX, workLeft, maxX);
+		posY = Util.clamp(posY, minY, maxY);
 		applyGeometry();
 		canvas.repaint();
+	}
+
+	/** 몸통 왼쪽 위 (창 안 좌표). */
+	private double bodyLeft() {
+		return charOriginX + layout.body().x;
+	}
+
+	private double bodyTop() {
+		return charOriginY + layout.body().y;
 	}
 
 	// ---------------------------------------------------------------- 표정/색상
@@ -455,7 +502,7 @@ final class PetApp implements SettingsHost {
 	/** 표정에 따른 팔 높이 갱신. */
 	private void updateArmPose(String targetExpression) {
 		boolean raised = EXPR_FALL.equals(targetExpression);
-		armTopTarget = raised ? armY - armRaiseOffset : armY;
+		armLiftTarget = raised ? -armRaiseOffset : 0;
 	}
 
 	/** 표정 변경 및 눈 리드로잉. */
@@ -492,9 +539,9 @@ final class PetApp implements SettingsHost {
 		}
 		PetHeart heart = new PetHeart();
 		heart.size = uniform(PET_HEART_SIZE_MIN, PET_HEART_SIZE_MAX);
-		heart.x = charOriginX + (charFaceWidth * uniform(PET_HEART_BODY_X_MIN, PET_HEART_BODY_X_MAX));
+		heart.x = bodyLeft() + (layout.body().w * uniform(PET_HEART_BODY_X_MIN, PET_HEART_BODY_X_MAX));
 		double heartGap = uniform(PET_HEART_ABOVE_GAP_MIN, PET_HEART_ABOVE_GAP_MAX);
-		heart.y = charOriginY - (heart.size * 0.64) - heartGap;
+		heart.y = bodyTop() - (heart.size * 0.64) - heartGap;
 		heart.vx = uniform(-PET_HEART_DRIFT_X, PET_HEART_DRIFT_X);
 		heart.rise = uniform(PET_HEART_RISE_MIN, PET_HEART_RISE_MAX);
 		heart.ageMs = 0.0;
@@ -540,7 +587,7 @@ final class PetApp implements SettingsHost {
 		double dialogX = Util.clamp(posX + (windowWidth / 2) - (dialogWidth / 2.0), 0.0, Math.max(0, screen.width - dialogWidth));
 		double preferredY = posY + walkBobCurrent - dialogHeight - 12;
 		if (preferredY < 0) {
-			preferredY = posY + walkBobCurrent + WINDOW_HEIGHT + 12;
+			preferredY = posY + walkBobCurrent + windowHeight + 12;
 		}
 		double dialogY = Util.clamp(preferredY, 0.0, Math.max(0, screen.height - dialogHeight));
 		dialog.setLocation((int) dialogX, (int) dialogY);
@@ -660,6 +707,7 @@ final class PetApp implements SettingsHost {
 			+ "\"petColor\":" + jsonString(currentCharacterColor) + ","
 			+ "\"baseColor\":" + jsonString(baseCharacterColor) + ","
 			+ "\"status\":" + jsonString(webStatus) + ","
+			+ "\"parts\":" + Json.write(layout.toJson()) + ","
 			+ "\"modes\":{"
 			+ "\"browserMonocle\":" + jsonString(browserAppearanceMode.key) + ","
 			+ "\"browserIeIcon\":" + jsonString(browserIeAppearanceMode.key) + ","
@@ -739,6 +787,98 @@ final class PetApp implements SettingsHost {
 		ColorSettings.saveCustomColorSlots(result.customSlots());
 		Path savedPath = applyBaseColor(selected, true);
 		refreshWebSettings(savedPath == null ? "선택 색 적용됨(저장 실패): " + selected : "선택 색 적용: " + selected);
+	}
+
+	// ---------------------------------------------------------------- 모습 꾸미기 (SettingsHost)
+
+	/** 배치를 화면 비트에 적용하고 settings.json 에 저장, 안 쓰는 사진은 지운다. */
+	private void saveLayout(PartLayout newLayout, String status) {
+		applyLayout(newLayout);
+		SettingsStore store = SettingsStore.get();
+		store.setParts(layout);
+		Path saved = store.save();
+		partImages.deleteUnused(layout.imageFiles());
+		refreshWebSettings(saved == null ? status + " (저장 실패)" : status);
+	}
+
+	@Override
+	public void setParts(String layoutJson) {
+		try {
+			saveLayout(PartLayout.fromJson(Json.read(layoutJson)), "모습을 바꿨어요");
+		} catch (RuntimeException e) {
+			refreshWebSettings("모습을 바꾸지 못했어요");
+		}
+	}
+
+	@Override
+	public void pickPartImage(String part, String expression) {
+		if (part == null || layout.get(part) == null) {
+			return;
+		}
+		java.awt.FileDialog chooser = new java.awt.FileDialog(settingsDialog, "부위 사진 고르기", java.awt.FileDialog.LOAD);
+		chooser.setFile("*.png;*.jpg;*.jpeg;*.gif;*.bmp");
+		chooser.setFilenameFilter((dir, name) -> name.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|bmp)"));
+		chooser.setVisible(true); // 고를 때까지 기다린다
+		if (chooser.getFile() == null) {
+			refreshWebSettings("사진 고르기를 취소했어요");
+			return;
+		}
+		java.io.File file = new java.io.File(chooser.getDirectory(), chooser.getFile());
+		String name;
+		try {
+			name = partImages.importImage(file);
+		} catch (java.io.IOException | RuntimeException e) {
+			refreshWebSettings("사진을 읽지 못했어요: " + e.getMessage());
+			return;
+		}
+		BufferedImage image = partImages.get(name);
+		PartLayout copy = layout.copy();
+		PartLayout.Part target = copy.get(part);
+		boolean eyes = PartLayout.EYES.equals(part);
+		String expressionKey = PartLayout.EYE_EXPRESSIONS.contains(expression) ? expression : PartLayout.EXPR_NEUTRAL;
+		if (eyes) {
+			target.images.put(expressionKey, name);
+		} else {
+			target.image = name;
+			target.flip = false;
+		}
+		// 가로 크기는 그대로 두고 사진 비율에 맞춰 세로 크기를 맞춘다 (눈은 평소 표정 사진일 때만)
+		if (image != null && (!eyes || PartLayout.EXPR_NEUTRAL.equals(expressionKey))) {
+			target.h = Math.max(2, (int) Math.round(target.w * image.getHeight() / (double) image.getWidth()));
+		}
+		if (copy.symmetric && PartLayout.mirrorOf(part) != null) {
+			copy.mirrorFrom(part);
+		}
+		saveLayout(copy, "사진을 넣었어요");
+	}
+
+	@Override
+	public void removePartImage(String part, String expression) {
+		if (part == null || layout.get(part) == null) {
+			return;
+		}
+		PartLayout copy = layout.copy();
+		PartLayout.Part target = copy.get(part);
+		if (PartLayout.EYES.equals(part)) {
+			target.images.put(PartLayout.EYE_EXPRESSIONS.contains(expression) ? expression : PartLayout.EXPR_NEUTRAL, null);
+		} else {
+			target.image = null;
+			target.flip = false;
+		}
+		if (copy.symmetric && PartLayout.mirrorOf(part) != null) {
+			copy.mirrorFrom(part);
+		}
+		saveLayout(copy, "사진을 뺐어요");
+	}
+
+	@Override
+	public void resetParts() {
+		saveLayout(PartLayout.defaults(), "기본 비트로 되돌렸어요");
+	}
+
+	@Override
+	public String partImageDataUrl(String fileName) {
+		return partImages.dataUrl(fileName);
 	}
 
 	@Override
@@ -1356,8 +1496,8 @@ final class PetApp implements SettingsHost {
 			setCharacterColor(baseCharacterColor);
 		}
 
-		double charCenterX = posX + charOriginX + (charFaceWidth / 2.0);
-		double charCenterY = posY + walkBobCurrent + charOriginY + (charFaceHeight / 2.0);
+		double charCenterX = posX + bodyLeft() + (layout.body().w / 2.0);
+		double charCenterY = posY + walkBobCurrent + bodyTop() + (layout.body().h / 2.0);
 		Point cursor = cursorLocation();
 		double cursorX = cursor.x;
 		double cursorY = cursor.y;
@@ -1387,10 +1527,10 @@ final class PetApp implements SettingsHost {
 			colorErrorEyeOffsetX = 0.0;
 		}
 
-		double faceLeft = posX + charOriginX;
-		double faceTop = posY + walkBobCurrent + charOriginY;
-		double faceRight = faceLeft + charFaceWidth;
-		double headBottom = faceTop + (charFaceHeight * PET_HEAD_ZONE_RATIO);
+		double faceLeft = posX + bodyLeft();
+		double faceTop = posY + walkBobCurrent + bodyTop();
+		double faceRight = faceLeft + layout.body().w;
+		double headBottom = faceTop + (layout.body().h * PET_HEAD_ZONE_RATIO);
 		boolean cursorOnHead = faceLeft <= cursorX && cursorX <= faceRight && faceTop <= cursorY && cursorY <= headBottom;
 
 		if (petFaceMs > 0) {
@@ -1544,8 +1684,8 @@ final class PetApp implements SettingsHost {
 		}
 
 		if (!colorPauseActive) {
-			double charLeft = posX + leftArmLeft + limbOffsetX - Math.abs(limbSwayX);
-			double charRight = posX + rightArmRight + limbOffsetX + Math.abs(limbSwayX);
+			double charLeft = posX + charOriginX + layoutBounds.minX() + limbOffsetX - Math.abs(limbSwayX);
+			double charRight = posX + charOriginX + layoutBounds.maxX() + limbOffsetX + Math.abs(limbSwayX);
 			List<Double> platformTops = getPlatformTops(charLeft, charRight);
 
 			if (!dragging && !gravityActive) {
@@ -1697,9 +1837,9 @@ final class PetApp implements SettingsHost {
 			limbSwayX = 0.0;
 		}
 
-		armTopCurrent += (armTopTarget - armTopCurrent) * ARM_POSE_SMOOTHING;
-		if (Math.abs(armTopTarget - armTopCurrent) < 0.05) {
-			armTopCurrent = armTopTarget;
+		armLiftCurrent += (armLiftTarget - armLiftCurrent) * ARM_POSE_SMOOTHING;
+		if (Math.abs(armLiftTarget - armLiftCurrent) < 0.05) {
+			armLiftCurrent = armLiftTarget;
 		}
 		canvas.repaint();
 	}
@@ -1723,56 +1863,119 @@ final class PetApp implements SettingsHost {
 	/** 캐릭터 전체를 그린다. 순서는 파이썬 Tk 캔버스의 쌓임 순서와 같다. */
 	private void paintScene(Graphics2D g) {
 		String color = currentCharacterColor;
-		// 몸통 (팔/다리와 살짝 떨어지도록 얼굴 영역보다 조금 작게)
-		Draw.rect(g, charOriginX + BODY_INSET_X, charOriginY,
-			charOriginX + charFaceWidth - BODY_INSET_X, charOriginY + charFaceHeight - BODY_INSET_BOTTOM, color, "#000000", border);
+		PartLayout.Part body = layout.body();
+		PartLayout.Part leftArm = layout.leftArm();
+		PartLayout.Part rightArm = layout.rightArm();
+		PartLayout.Part leftLeg = layout.leftLeg();
+		PartLayout.Part rightLeg = layout.rightLeg();
+		double bodyLeft = bodyLeft();
+		double bodyTop = bodyTop();
+
+		// 몸통
+		drawPart(g, body, bodyLeft, bodyTop, color);
 		// 다리
-		Draw.rect(g, leftLegX + limbOffsetX - limbSwayX, legY + limbOffsetY,
-			leftLegX + limbOffsetX - limbSwayX + LIMB_SIZE, legY + limbOffsetY + LIMB_SIZE, color, "#000000", border);
-		Draw.rect(g, rightLegX + limbOffsetX + limbSwayX, legY + limbOffsetY,
-			rightLegX + limbOffsetX + limbSwayX + LIMB_SIZE, legY + limbOffsetY + LIMB_SIZE, color, "#000000", border);
+		drawPart(g, leftLeg, charOriginX + leftLeg.x + limbOffsetX - limbSwayX, charOriginY + leftLeg.y + limbOffsetY, color);
+		drawPart(g, rightLeg, charOriginX + rightLeg.x + limbOffsetX + limbSwayX, charOriginY + rightLeg.y + limbOffsetY, color);
 
 		boolean pixelHeartVisible = isPixelHeartEnabled();
 		if (pixelHeartVisible) {
-			AppearanceRendering.renderPixelHeart(g, charOriginX, charOriginY, charFaceWidth, eyeShapeScale);
+			AppearanceRendering.renderPixelHeart(g, bodyLeft, bodyTop, body.w, eyeShapeScale);
 		}
 		if (isMediaHeadsetEnabled()) {
-			AppearanceRendering.renderHeadset(g, charOriginX, charOriginY, charFaceWidth, charFaceHeight, headsetStroke);
+			AppearanceRendering.renderHeadset(g, bodyLeft, bodyTop, body.w, body.h, headsetStroke);
 		}
 		paintEyes(g);
 		if (pixelHeartVisible) {
-			AppearanceRendering.renderPixelHeartShine(g, charOriginX, charOriginY, charFaceWidth, eyeShapeScale);
+			AppearanceRendering.renderPixelHeartShine(g, bodyLeft, bodyTop, body.w, eyeShapeScale);
 		}
 		for (PetHeart heart : petHearts) {
 			AppearanceRendering.renderPetHeart(g, heart.renderX, heart.renderY, heart.renderSize, heart.renderColor);
 		}
 
 		// 팔
-		double armTop = armTopCurrent + limbOffsetY;
-		Draw.rect(g, leftArmLeft + limbOffsetX + limbSwayX, armTop,
-			leftArmRight + limbOffsetX + limbSwayX, armTop + LIMB_SIZE, color, "#000000", border);
-		Draw.rect(g, rightArmLeft + limbOffsetX - limbSwayX, armTop,
-			rightArmRight + limbOffsetX - limbSwayX, armTop + LIMB_SIZE, color, "#000000", border);
+		drawPart(g, leftArm, charOriginX + leftArm.x + limbOffsetX + limbSwayX,
+			charOriginY + leftArm.y + armLiftCurrent + limbOffsetY, color);
+		drawPart(g, rightArm, charOriginX + rightArm.x + limbOffsetX - limbSwayX,
+			charOriginY + rightArm.y + armLiftCurrent + limbOffsetY, color);
 
 		if (isBrowserMonocleEnabled()) {
-			AppearanceRendering.renderMonocle(g, rightArmRight, armTopCurrent, limbOffsetX, limbOffsetY, limbSwayX,
-				LIMB_SIZE, monocleRadius, monocleStroke, monocleHandleStroke);
+			AppearanceRendering.renderMonocle(g, charOriginX + rightArm.right(), charOriginY + rightArm.y + armLiftCurrent,
+				limbOffsetX, limbOffsetY, limbSwayX, rightArm.h, monocleRadius, monocleStroke, monocleHandleStroke);
 		}
 		if (isBrowserIeIconEnabled()) {
-			AppearanceRendering.renderIeIcon(g, leftArmLeft, armTopCurrent, limbOffsetX, limbOffsetY, limbSwayX,
-				LIMB_SIZE, ieIconRadius, ieIconOrbitStroke, ieIconBarStroke, ieIconFont);
+			AppearanceRendering.renderIeIcon(g, charOriginX + leftArm.x, charOriginY + leftArm.y + armLiftCurrent,
+				limbOffsetX, limbOffsetY, limbSwayX, leftArm.h, ieIconRadius, ieIconOrbitStroke, ieIconBarStroke, ieIconFont);
 		}
 	}
 
-	/** 표정에 맞는 눈 (파이썬 draw_eyes). 마지막으로 다시 그린 시점의 시선 값을 사용한다. */
-	private void paintEyes(Graphics2D g) {
+	/** 부위 하나: 사진이 있으면 사진, 없으면 몸 색 네모 + 외곽선. */
+	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color) {
+		BufferedImage image = partImages.get(part.image);
+		if (image == null) {
+			Draw.rect(g, x, y, x + part.w, y + part.h, color, "#000000", border);
+			return;
+		}
+		drawImage(g, image, x, y, part.w, part.h, part.flip);
+	}
+
+	private static void drawImage(Graphics2D g, BufferedImage image, double x, double y, double w, double h, boolean flip) {
+		Graphics2D gi = (Graphics2D) g.create();
+		try {
+			gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			gi.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+			gi.translate(x, y);
+			if (flip) {
+				gi.translate(w, 0);
+				gi.scale(-1, 1);
+			}
+			gi.scale(w / image.getWidth(), h / image.getHeight());
+			gi.drawImage(image, 0, 0, null);
+		} finally {
+			gi.dispose();
+		}
+	}
+
+	/**
+	 * 표정에 맞는 눈 (파이썬 draw_eyes). 마지막으로 다시 그린 시점의 시선 값을 사용한다.
+	 * 표정별 눈 사진이 있으면 눈 영역에 사진을, 없으면 기본 눈을 눈 영역에 맞춰 늘려 그린다.
+	 */
+	private void paintEyes(Graphics2D graphics) {
+		PartLayout.Part eyes = layout.eyes();
+		String expressionKey = switch (expression) {
+			case EXPR_GRAB -> PartLayout.EXPR_GRAB;
+			case EXPR_FALL -> PartLayout.EXPR_FALL;
+			default -> PartLayout.EXPR_NEUTRAL;
+		};
+		BufferedImage eyeImage = partImages.get(layout.eyeImage(expressionKey));
+		if (eyeImage != null) {
+			drawImage(graphics, eyeImage, charOriginX + eyes.x + eyeDrawnShift + eyeDrawnInvalidOffset,
+				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, false);
+			return;
+		}
+
+		// 기본 눈 영역(PartLayout.DEFAULT_EYES_*)을 꾸민 눈 영역으로 옮기고 늘린다 (기본 배치면 그대로)
+		double scaleX = eyes.w / (double) PartLayout.DEFAULT_EYES_W;
+		double scaleY = eyes.h / (double) PartLayout.DEFAULT_EYES_H;
+		Graphics2D g = (Graphics2D) graphics.create();
+		try {
+			// 기본 눈 좌표는 창 기준으로 반올림해야 원래 모양과 똑같다 → 창 기준으로 그리고, 기본 눈 영역을 꾸민 영역으로 옮긴다
+			g.translate(charOriginX + eyes.x, charOriginY + eyes.y);
+			g.scale(scaleX, scaleY);
+			g.translate(-(charOriginX + PartLayout.DEFAULT_EYES_X), -(charOriginY + PartLayout.DEFAULT_EYES_Y));
+			paintDefaultEyes(g);
+		} finally {
+			g.dispose();
+		}
+	}
+
+	/** 기본 눈 (창 기준 좌표). */
+	private void paintDefaultEyes(Graphics2D g) {
 		double shiftX = eyeDrawnShift;
 		double shiftY = eyeDrawnShiftY;
 		double invalidOffset = eyeDrawnInvalidOffset;
 		double scale = eyeShapeScale;
-		double offsetX = eyeShapeOffsetX;
-		double offsetY = eyeShapeOffsetY;
-
+		double offsetX = charOriginX + eyeShapeOffsetX;
+		double offsetY = charOriginY + eyeShapeOffsetY;
 		// 눈 좌표 변환 (sx/sy), 왼쪽/오른쪽 눈 간격 보정 (lx/rx), 눈 Y 보정 (ey)
 		java.util.function.DoubleUnaryOperator sx = v -> Util.pyRound(offsetX + EYE_X_SHIFT + shiftX + invalidOffset + (v * scale));
 		java.util.function.DoubleUnaryOperator sy = v -> Util.pyRound(offsetY + (v * scale));

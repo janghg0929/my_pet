@@ -35,6 +35,7 @@ class WebSettingsPreviewTest {
 		}
 		assumeTrue(hasJavaFx, "JavaFX 가 없는 JDK");
 
+		java.util.concurrent.atomic.AtomicReference<String> sentParts = new java.util.concurrent.atomic.AtomicReference<>();
 		SettingsHost host = new SettingsHost() {
 			@Override
 			public String settingsStateJson() {
@@ -51,6 +52,28 @@ class WebSettingsPreviewTest {
 
 			@Override
 			public void pickCustomColor() {
+			}
+
+			@Override
+			public void setParts(String layoutJson) {
+				sentParts.set(layoutJson);
+			}
+
+			@Override
+			public void pickPartImage(String part, String expression) {
+			}
+
+			@Override
+			public void removePartImage(String part, String expression) {
+			}
+
+			@Override
+			public void resetParts() {
+			}
+
+			@Override
+			public String partImageDataUrl(String fileName) {
+				return null;
 			}
 
 			@Override
@@ -177,6 +200,27 @@ class WebSettingsPreviewTest {
 		}
 		g.dispose();
 		javax.imageio.ImageIO.write(sheet, "png", new File(out, "web-color-motion.png"));
+
+		// 모습 꾸미기: 화면을 찍고, 몸통 너비를 숫자로 바꾸면 Java 로 배치가 가는지 본다
+		settings[0].showViewForPreview("back");
+		runScript(settings[0], "document.querySelector('.back').click()");
+		Thread.sleep(300);
+		settings[0].showViewForPreview("parts");
+		Thread.sleep(700);
+		SwingUtilities.invokeAndWait(() -> System.out.println("after main→parts: " + edges(settings[0].dialog())));
+		snapshot(settings[0], new File(out, "web-parts.png"));
+		runScript(settings[0], "var w = document.getElementById('parts-w'); w.value = '60'; w.dispatchEvent(new Event('input'));");
+		Thread.sleep(700);
+		String parts = sentParts.get();
+		assertTrue(parts != null && parts.contains("\"w\":60"), "setParts 가 안 왔거나 너비가 다름: " + parts);
+		com.mypet.parts.PartLayout sent = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(parts));
+		System.out.println("parts sent: body w=" + sent.body().w + ", rightArm x=" + sent.rightArm().x + ", rightLeg x=" + sent.rightLeg().x);
+		// 좌우 맞추기: 몸통이 16px 넓어진 만큼 오른팔/오른다리도 따라간다 (원래 1px 비대칭은 유지)
+		assertTrue(sent.rightArm().x == 61 && sent.rightLeg().x == 41, "오른쪽 부위 위치: " + sent.rightArm().x + ", " + sent.rightLeg().x);
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=eyes]').click()");
+		Thread.sleep(300);
+		snapshot(settings[0], new File(out, "web-parts-eyes.png"));
+
 		SwingUtilities.invokeAndWait(() -> settings[0].dialog().dispose());
 		System.out.println("web preview saved: " + out.getAbsolutePath());
 	}

@@ -1,19 +1,26 @@
-// 실제 비트 모양 그리기 + 걷기/점프 애니메이션 (canvas).
-// 치수와 움직임 값은 Java 쪽 Constants.java / PetApp.java 와 같다. (단위: 화면 px, 몸통 왼쪽 위가 0,0)
+// 비트 그리기 + 걷기/점프 애니메이션 (canvas).
+// 모습 꾸미기 배치(layout)대로 그린다: 부위마다 사진이 있으면 사진, 없으면 몸 색 네모 + 외곽선.
+// 치수와 움직임 값은 Java 쪽 PartLayout.java / PetApp.java 와 같다. (단위: 화면 px, 몸통 기본 위치 왼쪽 위가 0,0)
 (function () {
   "use strict";
 
-  var BIT = {
-    faceW: 44, faceH: 28, // 몸통(얼굴) 크기
-    bodyInsetX: 0, bodyInsetBottom: 0, // 팔/다리와 띄우려고 몸통을 줄이는 폭
-    limb: 8, // 팔/다리 크기
-    armY: 14, // 팔 위쪽 (가만히 있을 때)
-    armRaise: 8, // 점프할 때 팔을 드는 높이
-    leftArmX: -9, rightArmX: 45,
-    legY: 29, leftLegX: 10, rightLegX: 25,
-    left: -9, right: 53, bottom: 37, // 전체 범위
-    eyeScale: 28 / 96, eyeOffsetX: 8 - 2.5, eyeStroke: 2
+  // 기본 비트 배치 (PartLayout.defaults 와 같다)
+  var DEFAULT_LAYOUT = {
+    symmetric: true,
+    body: { x: 0, y: 0, w: 44, h: 28, image: null, flip: false },
+    leftArm: { x: -9, y: 14, w: 8, h: 8, image: null, flip: false },
+    rightArm: { x: 45, y: 14, w: 8, h: 8, image: null, flip: false },
+    leftLeg: { x: 10, y: 29, w: 8, h: 8, image: null, flip: false },
+    rightLeg: { x: 25, y: 29, w: 8, h: 8, image: null, flip: false },
+    eyes: { x: 14, y: 12, w: 18, h: 6, images: { neutral: null, grab: null, fall: null } }
   };
+  var PART_KEYS = ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "eyes"];
+  var DEFAULT_EYES = { x: 14, y: 12, w: 18, h: 6 };
+  var ARM_RAISE = 8; // 점프할 때 팔을 드는 높이
+  var EYE = { scale: 28 / 96, offsetX: 8 - 2.5, stroke: 2 };
+
+  // 부위 사진 (파일 이름 → 불러온 Image). settings.js 가 채운다.
+  var images = {};
 
   // 64Hz 틱 기준 값 (파이썬 버전이 실제로 돌던 속도)
   var TICK_MS = 1000 / 64;
@@ -29,8 +36,26 @@
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
+  function copyLayout(layout) {
+    return JSON.parse(JSON.stringify(layout || DEFAULT_LAYOUT));
+  }
+
   function newPose() {
-    return { x: 0, y: 0, bob: 0, limbX: 0, limbY: 0, swayX: 0, armTop: BIT.armY, eyeShift: 0, falling: false };
+    return { x: 0, y: 0, bob: 0, limbX: 0, limbY: 0, swayX: 0, armLift: 0, eyeShift: 0, falling: false, expression: null };
+  }
+
+  /** 전체 범위. withRaise 면 팔을 든 높이까지 포함. */
+  function bounds(layout, withRaise) {
+    var b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+    PART_KEYS.forEach(function (key) {
+      var part = layout[key];
+      var arm = key === "leftArm" || key === "rightArm";
+      b.minX = Math.min(b.minX, part.x);
+      b.maxX = Math.max(b.maxX, part.x + part.w);
+      b.minY = Math.min(b.minY, arm && withRaise ? part.y - ARM_RAISE : part.y);
+      b.maxY = Math.max(b.maxY, part.y + part.h);
+    });
+    return b;
   }
 
   // ---------------------------------------------------------------- 그리기
@@ -56,69 +81,132 @@
     var b = Math.max(1, Math.round(k));
     ctx.fillStyle = "#000";
     ctx.fillRect(X1, Y1, X2 - X1, Y2 - Y1);
-    ctx.fillStyle = color;
-    ctx.fillRect(X1 + b, Y1 + b, X2 - X1 - b * 2, Y2 - Y1 - b * 2);
+    if (X2 - X1 > b * 2 && Y2 - Y1 > b * 2) {
+      ctx.fillStyle = color;
+      ctx.fillRect(X1 + b, Y1 + b, X2 - X1 - b * 2, Y2 - Y1 - b * 2);
+    }
   }
 
-  // ox, oy: 몸통 왼쪽 위의 캔버스 좌표(장치 픽셀), k: 1px 이 몇 장치 픽셀인지
-  function drawBitAt(ctx, ox, oy, k, color, pose) {
+  function loadedImage(name) {
+    var image = name ? images[name] : null;
+    return image && image.complete && image.naturalWidth > 0 ? image : null;
+  }
+
+  function drawImage(ctx, image, x, y, w, h, flip) {
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    if (flip) {
+      ctx.translate(x + w, y);
+      ctx.scale(-1, 1);
+      ctx.drawImage(image, 0, 0, w, h);
+    } else {
+      ctx.drawImage(image, x, y, w, h);
+    }
+    ctx.restore();
+  }
+
+  // 부위 하나 (dx, dy: 움직임으로 생기는 어긋남)
+  function drawPart(ctx, ox, oy, k, part, dx, dy, color) {
+    var x = part.x + dx, y = part.y + dy;
+    var image = loadedImage(part.image);
+    if (image) {
+      drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, part.flip);
+    } else {
+      outlinedRect(ctx, ox, oy, k, x, y, x + part.w, y + part.h, color);
+    }
+  }
+
+  // ox, oy: 몸통 기본 위치(0,0)의 캔버스 좌표(장치 픽셀), k: 1px 이 몇 장치 픽셀인지
+  function drawBitAt(ctx, ox, oy, k, color, pose, layout) {
     var p = pose || newPose();
-    var limbTop = p.armTop + p.limbY;
+    var L = layout || DEFAULT_LAYOUT;
     // 몸통, 다리 (앱과 같은 순서로 그린다)
-    outlinedRect(ctx, ox, oy, k, BIT.bodyInsetX, 0, BIT.faceW - BIT.bodyInsetX, BIT.faceH - BIT.bodyInsetBottom, color);
-    outlinedRect(ctx, ox, oy, k, BIT.leftLegX + p.limbX - p.swayX, BIT.legY + p.limbY,
-      BIT.leftLegX + p.limbX - p.swayX + BIT.limb, BIT.legY + p.limbY + BIT.limb, color);
-    outlinedRect(ctx, ox, oy, k, BIT.rightLegX + p.limbX + p.swayX, BIT.legY + p.limbY,
-      BIT.rightLegX + p.limbX + p.swayX + BIT.limb, BIT.legY + p.limbY + BIT.limb, color);
-    drawEyes(ctx, ox, oy, k, p);
+    drawPart(ctx, ox, oy, k, L.body, 0, 0, color);
+    drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color);
+    drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color);
+    drawEyes(ctx, ox, oy, k, p, L.eyes);
     // 팔
-    outlinedRect(ctx, ox, oy, k, BIT.leftArmX + p.limbX + p.swayX, limbTop,
-      BIT.leftArmX + p.limbX + p.swayX + BIT.limb, limbTop + BIT.limb, color);
-    outlinedRect(ctx, ox, oy, k, BIT.rightArmX + p.limbX - p.swayX, limbTop,
-      BIT.rightArmX + p.limbX - p.swayX + BIT.limb, limbTop + BIT.limb, color);
+    drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color);
+    drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color);
   }
 
-  // 눈 (PetApp.paintEyes 와 같은 좌표 계산)
-  function drawEyes(ctx, ox, oy, k, p) {
-    function sx(v) { return ox + Math.round(BIT.eyeOffsetX + p.eyeShift + v * BIT.eyeScale) * k; }
-    function sy(v) { return oy + Math.round(v * BIT.eyeScale) * k; }
+  function expressionOf(p) {
+    return p.expression || (p.falling ? "fall" : "neutral");
+  }
+
+  // 눈: 표정별 사진이 있으면 사진, 없으면 기본 눈을 눈 영역에 맞춰 늘려 그린다
+  function drawEyes(ctx, ox, oy, k, p, eyes) {
+    var expression = expressionOf(p);
+    var image = loadedImage(eyes.images && eyes.images[expression]);
+    if (image) {
+      drawImage(ctx, image, ox + (eyes.x + p.eyeShift) * k, oy + eyes.y * k, eyes.w * k, eyes.h * k, false);
+      return;
+    }
+    ctx.save();
+    ctx.translate(ox + eyes.x * k, oy + eyes.y * k);
+    ctx.scale(eyes.w / DEFAULT_EYES.w, eyes.h / DEFAULT_EYES.h);
+    ctx.translate(-DEFAULT_EYES.x * k, -DEFAULT_EYES.y * k);
+    drawDefaultEyes(ctx, k, p, expression);
+    ctx.restore();
+  }
+
+  // 기본 눈 (PetApp.paintDefaultEyes 와 같은 좌표 계산, 몸통 기준)
+  function drawDefaultEyes(ctx, k, p, expression) {
+    function sx(v) { return Math.round(EYE.offsetX + p.eyeShift + v * EYE.scale) * k; }
+    function sy(v) { return Math.round(v * EYE.scale) * k; }
     function lx(v) { return v - 2; }
     function rx(v) { return v + 2; }
     ctx.fillStyle = "#000";
     ctx.strokeStyle = "#000";
-    if (!p.falling) {
-      [[lx(30), lx(50)], [rx(70), rx(90)]].forEach(function (eye) {
-        var x1 = sx(eye[0]), x2 = sx(eye[1]), y1 = sy(42), y2 = sy(62);
-        // 앱 안의 웹 엔진(JavaFX WebView)은 ctx.ellipse 를 지원하지 않아서, 원을 늘려서 타원을 그린다
-        ctx.save();
-        ctx.translate((x1 + x2) / 2, (y1 + y2) / 2);
-        ctx.scale((x2 - x1) / 2, (y2 - y1) / 2);
+    ctx.lineWidth = EYE.stroke * k;
+    ctx.lineCap = "round";
+    if (expression === "fall") {
+      // 점프/낙하 중: > < 모양
+      [[lx(29), 43, lx(50), 52], [lx(29), 61, lx(50), 52], [rx(91), 43, rx(70), 52], [rx(91), 61, rx(70), 52]].forEach(function (l) {
         ctx.beginPath();
-        ctx.arc(0, 0, 1, 0, Math.PI * 2);
-        ctx.restore();
-        ctx.fill();
+        ctx.moveTo(sx(l[0]), sy(l[1]));
+        ctx.lineTo(sx(l[2]), sy(l[3]));
+        ctx.stroke();
       });
       return;
     }
-    // 점프/낙하 중: > < 모양
-    ctx.lineWidth = BIT.eyeStroke * k;
-    ctx.lineCap = "round";
-    [[lx(29), 43, lx(50), 52], [lx(29), 61, lx(50), 52], [rx(91), 43, rx(70), 52], [rx(91), 61, rx(70), 52]].forEach(function (l) {
+    // 앱 안의 웹 엔진(JavaFX WebView)은 ctx.ellipse 를 지원하지 않아서, 원을 늘려서 그린다
+    function ellipse(x1, y1, x2, y2, upperHalf) {
+      ctx.save();
+      ctx.translate((x1 + x2) / 2, (y1 + y2) / 2);
+      ctx.scale((x2 - x1) / 2, (y2 - y1) / 2);
       ctx.beginPath();
-      ctx.moveTo(sx(l[0]), sy(l[1]));
-      ctx.lineTo(sx(l[2]), sy(l[3]));
-      ctx.stroke();
+      if (upperHalf) {
+        ctx.arc(0, 0, 1, Math.PI, Math.PI * 2);
+      } else {
+        ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      }
+      ctx.restore();
+    }
+    if (expression === "grab") {
+      // 잡혔을 때: ∩ ∩ 모양
+      [[lx(27), lx(53)], [rx(67), rx(93)]].forEach(function (eye) {
+        ellipse(sx(eye[0]), sy(40), sx(eye[1]), sy(66), true);
+        ctx.stroke();
+      });
+      return;
+    }
+    [[lx(30), lx(50)], [rx(70), rx(90)]].forEach(function (eye) {
+      ellipse(sx(eye[0]), sy(42), sx(eye[1]), sy(62), false);
+      ctx.fill();
     });
   }
 
   // 가만히 있는 비트를 캔버스 가운데에 맞춰 그린다 (제목 막대 아이콘)
-  function drawIcon(canvas, color) {
+  function drawIcon(canvas, color, layout) {
+    var L = layout || DEFAULT_LAYOUT;
     var c = prepare(canvas);
-    var scale = Math.min(c.w / (BIT.right - BIT.left + 2), c.h / (BIT.bottom + 2));
+    var b = bounds(L, false);
+    var scale = Math.min(c.w / (b.maxX - b.minX + 2), c.h / (b.maxY - b.minY + 2));
     var k = scale * c.dpr;
-    var ox = (c.w * c.dpr - (BIT.right - BIT.left) * k) / 2 - BIT.left * k;
-    var oy = (c.h * c.dpr - BIT.bottom * k) / 2;
-    drawBitAt(c.ctx, ox, oy, k, color, null);
+    var ox = (c.w * c.dpr - (b.maxX - b.minX) * k) / 2 - b.minX * k;
+    var oy = (c.h * c.dpr - (b.maxY - b.minY) * k) / 2 - b.minY * k;
+    drawBitAt(c.ctx, ox, oy, k, color, null, L);
   }
 
   // ---------------------------------------------------------------- 애니메이션 (색깔 설정 미리보기)
@@ -138,6 +226,7 @@
   function Stage(canvas) {
     this.canvas = canvas;
     this.color = "#4fc3f7";
+    this.layout = copyLayout(DEFAULT_LAYOUT);
     this.running = false;
     this.reset();
   }
@@ -267,8 +356,8 @@
     var speed = Math.hypot(dx, dy);
     var phaseStep = speed > 0.01 ? clamp(speed * LIMB_SWAY_SPEED_SCALE, LIMB_SWAY_SPEED_MIN, LIMB_SWAY_SPEED_MAX) : 0;
 
-    var armTarget = p.falling ? BIT.armY - BIT.armRaise : BIT.armY;
-    p.armTop += (armTarget - p.armTop) * ARM_POSE_SMOOTHING;
+    var armTarget = p.falling ? -ARM_RAISE : 0;
+    p.armLift += (armTarget - p.armLift) * ARM_POSE_SMOOTHING;
 
     this.eyeTarget = Math.abs(dx) < 0.01 ? 0 : clamp(dx * EYE_LOOK_GAIN, -EYE_LOOK_MAX, EYE_LOOK_MAX);
     p.eyeShift += (this.eyeTarget - p.eyeShift) * EYE_LOOK_SMOOTHING;
@@ -294,18 +383,30 @@
 
   Stage.prototype.draw = function () {
     var c = prepare(this.canvas);
-    var scale = 1.5; // 미리보기에서는 1.5배 크기
+    var L = this.layout;
+    var b = bounds(L, true);
+    // 기본 1.5배, 꾸민 비트가 커서 무대에 안 들어가면 줄인다
+    var scale = Math.min(1.5, (c.w - 20) / Math.max(1, b.maxX - b.minX), (c.h - 20) / Math.max(1, b.maxY - b.minY + 70));
     var k = scale * c.dpr;
     var groundY = c.h * c.dpr - 8 * c.dpr; // 발이 닿는 바닥
-    var ox = (c.w * c.dpr) / 2 - (BIT.faceW / 2) * k + this.pose.x * k;
-    var oy = groundY - BIT.bottom * k + (this.pose.y + this.pose.bob) * k;
+    var centerX = (L.body.x + L.body.w / 2);
+    var ox = (c.w * c.dpr) / 2 - centerX * k + this.pose.x * k;
+    var oy = groundY - b.maxY * k + (this.pose.y + this.pose.bob) * k;
     // 바닥 선
     c.ctx.fillStyle = "#e9e1d3";
     c.ctx.fillRect(0, Math.round(groundY), c.w * c.dpr, Math.max(1, Math.round(c.dpr)));
-    drawBitAt(c.ctx, ox, oy, k, this.color, this.pose);
+    drawBitAt(c.ctx, ox, oy, k, this.color, this.pose, L);
   };
 
   window.BitView = {
+    DEFAULT_LAYOUT: DEFAULT_LAYOUT,
+    PART_KEYS: PART_KEYS,
+    images: images,
+    copyLayout: copyLayout,
+    bounds: bounds,
+    prepare: prepare,
+    newPose: newPose,
+    drawBitAt: drawBitAt,
     drawIcon: drawIcon,
     Stage: Stage
   };

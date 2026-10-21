@@ -30,6 +30,10 @@
       <span class="menu-title">색깔 설정</span>
       <span class="menu-desc">몸 색 바꾸기</span>
     </button>
+    <button class="menu-row" data-go="parts">
+      <span class="menu-title">모습 꾸미기</span>
+      <span class="menu-desc">팔·다리·눈 바꾸기</span>
+    </button>
     <footer class="footer">
       <span class="version" id="version">v-</span>
       <span class="footer-buttons">
@@ -50,6 +54,31 @@
     <p class="status" id="appearance-status"></p>
   </main>
 
+  <!-- 모습 꾸미기 (parts-editor.js) -->
+  <main class="view" data-view="parts" hidden>
+    <p class="subtitle">부위를 눌러 고르고, 끌어서 옮기거나 모서리로 크기를 바꿔요</p>
+    <section class="box parts-stage">
+      <canvas id="parts-canvas" class="parts-canvas" aria-label="비트 모습 편집"></canvas>
+    </section>
+    <div class="part-tabs" id="parts-tabs"></div>
+    <div class="part-tabs eye-tabs" id="parts-eye-tabs" hidden></div>
+    <div class="part-fields">
+      <label>X <input id="parts-x" type="number" step="1"></label>
+      <label>Y <input id="parts-y" type="number" step="1"></label>
+      <label>너비 <input id="parts-w" type="number" step="1" min="2"></label>
+      <label>높이 <input id="parts-h" type="number" step="1" min="2"></label>
+    </div>
+    <div class="button-row">
+      <button class="btn btn-primary" id="parts-photo">넣기: 몸통 사진</button>
+      <button class="btn" id="parts-photo-remove">사진 빼기</button>
+    </div>
+    <div class="parts-options">
+      <label class="check"><input type="checkbox" id="parts-symmetric"> 좌우 맞추기</label>
+      <button class="btn btn-small" id="parts-reset">기본 비트로</button>
+    </div>
+    <p class="status" id="parts-status"></p>
+  </main>
+
   <!-- 색깔 설정 -->
   <main class="view" data-view="color" hidden>
     <p class="subtitle">비트의 몸 색을 바꿀 수 있어요</p>
@@ -65,6 +94,7 @@
   </main>
 
   <script src="bit.js"></script>
+  <script src="parts-editor.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>
