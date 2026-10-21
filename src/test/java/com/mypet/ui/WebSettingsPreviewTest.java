@@ -351,6 +351,21 @@ class WebSettingsPreviewTest {
 			&& airClip.track("rightArm").get(1).rotation == -120, "고급 시간 막대 키");
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "고급 탭도 창 크기 그대로: " + settings[0].dialog().getHeight());
 		snapshot(settings[0], new File(out, "web-parts-advanced.png"));
+		// 시간 막대 휠 확대: 0.4초 근처에서 세 번 굴리면 1.25³ 배 (보이는 구간 0.8초 → 약 0.41초)
+		runScript(settings[0], "var c = document.getElementById('tl-canvas'); var b = c.getBoundingClientRect();"
+			+ " var x = b.left + 46 + (b.width - 54) * 0.5;"
+			+ " for (var i = 0; i < 3; i++) { c.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: x, clientY: b.top + 40, bubbles: true, cancelable: true })); }");
+		Thread.sleep(200);
+		String zoomedView = evalScript(settings[0], "var v = window.bitPartsEditor.timeView(); Math.round(v.start) + '~' + Math.round(v.start + v.span)");
+		snapshot(settings[0], new File(out, "web-parts-timeline-zoom.png"));
+		System.out.println("timeline zoom: visible " + zoomedView + " ms");
+		String[] range = zoomedView.split("~");
+		int visible = Integer.parseInt(range[1]) - Integer.parseInt(range[0]);
+		assertTrue(visible > 380 && visible < 440 && Integer.parseInt(range[0]) > 150, "시간 막대 확대: " + zoomedView);
+		runScript(settings[0], "var c = document.getElementById('tl-canvas'); var b = c.getBoundingClientRect();"
+			+ " c.dispatchEvent(new MouseEvent('dblclick', { clientX: b.left + 100, clientY: b.top + 5, bubbles: true }));");
+		Thread.sleep(100);
+		assertTrue("null".equals(evalScript(settings[0], "String(window.bitPartsEditor.tl.view)")), "눈금 두 번 누르면 전체 보기");
 		// 재생하면 재생 위치가 움직이고, 반복이 아니니 끝에서 멈춘다
 		runScript(settings[0], "document.getElementById('tl-play').click()");
 		Thread.sleep(1200);

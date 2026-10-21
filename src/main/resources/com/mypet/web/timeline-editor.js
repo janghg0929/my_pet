@@ -12,7 +12,11 @@
   var ROWS = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
   var ROW_LABELS = { body: "몸통", eyes: "눈", leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리" };
   var LABEL_W = 46, RULER_H = 16, ROW_H = 13, PAD_R = 8;
-  var SNAP_MS = 10, KEY_HIT = 6, MAX_KEYS = 60;
+  var KEY_HIT = 6, MAX_KEYS = 60;
+  var MIN_VIEW_MS = 100, TIME_ZOOM_STEP = 1.25; // 시간 막대를 가장 크게 확대하면 0.1초가 한 화면
+  // 눈금 간격 후보 (ms): 확대할수록 촘촘한 눈금
+  var TICK_STEPS = [5, 10, 20, 50, 100, 200, 500, 1000, 2000];
+  var LABEL_STEPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
   var MAX_OFFSET = 200, MAX_TURN = 1080, MIN_SCALE = 10, MAX_SCALE = 400;
   var ROTATE_SNAP = 15, ROTATE_SNAP_RANGE = 4;
   var FIELDS = ["dx", "dy", "rotation", "scaleX", "scaleY"];
@@ -25,7 +29,8 @@
 
   P.initTimeline = function () {
     var self = this;
-    this.tl = { state: "idle", playhead: 0, playing: false, drag: null };
+    // view: 시간 막대에 보이는 구간 {start, span} (ms), null = 전체
+    this.tl = { state: "idle", playhead: 0, playing: false, drag: null, view: null };
     this.tlCanvas = document.getElementById("tl-canvas");
 
     var states = document.getElementById("tl-states");
@@ -36,6 +41,7 @@
       button.setAttribute("data-key", state);
       button.addEventListener("click", function () {
         self.tl.state = state;
+        self.tl.view = null;
         self.tl.playhead = Math.min(self.tl.playhead, self.clip().duration);
         self.refreshControls();
         self.draw();
@@ -85,6 +91,7 @@
         });
       });
       self.tl.playhead = Math.min(self.tl.playhead, clip.duration);
+      self.tl.view = null;
       self.refreshControls();
       self.draw();
       self.commit(0);
@@ -106,6 +113,29 @@
 
     this.tlCanvas.addEventListener("mousedown", function (event) { self.timelineMouseDown(event); });
     this.tlCanvas.addEventListener("dblclick", function (event) { self.timelineDoubleClick(event); });
+    // 휠: 마우스 자리 기준 확대/축소, Shift+휠(또는 옆으로 굴리기): 좌우로 옮기기, 눈금 두 번 누르기: 전체 보기
+    // (앱 안의 웹 엔진은 wheel 과 예전 mousewheel 을 둘 다 보낼 수 있어서, wheel 을 받았으면 mousewheel 은 무시)
+    var sawWheel = false;
+    function onWheel(event) {
+      if (event.type === "wheel") {
+        sawWheel = true;
+      } else if (sawWheel) {
+        return;
+      }
+      event.preventDefault();
+      var dy = event.type === "wheel" ? event.deltaY : -event.wheelDelta;
+      var dx = event.type === "wheel" ? (event.deltaX || 0) : 0;
+      if (event.shiftKey || Math.abs(dx) > Math.abs(dy)) {
+        var amount = event.shiftKey ? dy : dx;
+        if (amount) {
+          self.timelineScroll(amount > 0 ? 1 : -1);
+        }
+      } else if (dy) {
+        self.timelineZoom(self.timelinePointer(event), dy < 0 ? TIME_ZOOM_STEP : 1 / TIME_ZOOM_STEP);
+      }
+    }
+    this.tlCanvas.addEventListener("wheel", onWheel);
+    this.tlCanvas.addEventListener("mousewheel", onWheel);
     document.addEventListener("mousemove", function (event) { self.timelineMouseMove(event); });
     document.addEventListener("mouseup", function () { self.timelineMouseUp(); });
   };
@@ -242,6 +272,12 @@
         this.updateAnimation();
       }
     }
+    if (tl.view) {
+      var v = this.timeView();
+      if (tl.playhead < v.start || tl.playhead > v.start + v.span) {
+        tl.view = { start: tl.playhead, span: v.span };
+      }
+    }
     this.refreshTimelineControls();
   };
 
@@ -283,13 +319,49 @@
 
   // ---------------------------------------------------------------- 시간 막대 그리기
 
-  P.timeToX = function (t, width) {
-    return LABEL_W + (t / this.clip().duration) * (width - LABEL_W - PAD_R);
+  /** 시간 막대에 보이는 구간 (ms): 확대하지 않았으면 클립 전체. */
+  P.timeView = function () {
+    var duration = this.clip().duration;
+    var v = this.tl.view;
+    if (!v) {
+      return { start: 0, span: duration };
+    }
+    var span = clamp(v.span, Math.min(MIN_VIEW_MS, duration), duration);
+    return { start: clamp(v.start, 0, duration - span), span: span };
   };
 
+  P.timeToX = function (t, width) {
+    var v = this.timeView();
+    return LABEL_W + ((t - v.start) / v.span) * (width - LABEL_W - PAD_R);
+  };
+
+  /** x 자리의 시간 (확대할수록 잘게 맞춘다). */
   P.xToTime = function (x, width) {
-    var t = (x - LABEL_W) / (width - LABEL_W - PAD_R) * this.clip().duration;
-    return clamp(Math.round(t / SNAP_MS) * SNAP_MS, 0, this.clip().duration);
+    var v = this.timeView();
+    var t = v.start + (x - LABEL_W) / (width - LABEL_W - PAD_R) * v.span;
+    var snap = v.span < 400 ? 1 : (v.span < 2000 ? 5 : 10);
+    return clamp(Math.round(t / snap) * snap, 0, this.clip().duration);
+  };
+
+  /** 마우스 자리(p)의 시간을 그대로 두고 확대/축소. */
+  P.timelineZoom = function (p, factor) {
+    var duration = this.clip().duration;
+    var v = this.timeView();
+    var area = p.w - LABEL_W - PAD_R;
+    var anchor = v.start + clamp((p.x - LABEL_W) / area, 0, 1) * v.span;
+    var span = clamp(v.span / factor, Math.min(MIN_VIEW_MS, duration), duration);
+    this.tl.view = span >= duration ? null : { start: anchor - (anchor - v.start) * span / v.span, span: span };
+    this.drawTimeline();
+  };
+
+  /** 확대한 시간 막대를 좌우로 옮긴다 (한 번에 보이는 구간의 15%). */
+  P.timelineScroll = function (direction) {
+    if (!this.tl.view) {
+      return;
+    }
+    var v = this.timeView();
+    this.tl.view = { start: v.start + direction * v.span * 0.15, span: v.span };
+    this.drawTimeline();
   };
 
   P.drawTimeline = function () {
@@ -308,21 +380,37 @@
     // 이름 칸
     ctx.fillStyle = "#f6f1e7";
     ctx.fillRect(0, 0, LABEL_W, h);
-    // 눈금: 0.1초마다 짧게, 0.5초(길면 1초)마다 숫자
-    var labelEvery = clip.duration > 3000 ? 1000 : 500;
+    // 시간 쪽은 보이는 구간만 그린다
+    var view = this.timeView();
+    var pxPerMs = (w - LABEL_W - PAD_R) / view.span;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(LABEL_W, 0, w - LABEL_W, h);
+    ctx.clip();
+    // 눈금: 확대한 만큼 촘촘하게 (짧은 눈금은 6px, 숫자는 36px 이상 떨어지게)
+    var minor = pickStep(TICK_STEPS, pxPerMs, 6);
+    var major = pickStep(LABEL_STEPS, pxPerMs, 36);
+    var decimals = major < 100 ? 2 : (major < 1000 ? 1 : 0);
     ctx.fillStyle = "#7d7468";
     ctx.font = "9px Consolas, monospace";
-    for (var t = 0; t <= clip.duration + 1; t += 100) {
+    for (var t = Math.ceil(view.start / minor) * minor; t <= Math.min(clip.duration, view.start + view.span) + 0.5; t += minor) {
       var x = Math.round(this.timeToX(t, w)) + 0.5;
-      var major = t % labelEvery === 0;
-      ctx.fillRect(x - 0.5, major ? 8 : 12, 1, major ? 8 : 4);
-      if (major) {
+      var isMajor = Math.round(t) % major === 0;
+      ctx.fillRect(x - 0.5, isMajor ? 8 : 12, 1, isMajor ? 8 : 4);
+      if (isMajor) {
         // 오른쪽 끝 숫자는 눈금 왼쪽에 써서 잘리지 않게
-        var label = (t / 1000).toString();
+        var label = (t / 1000).toFixed(decimals);
         var tw = ctx.measureText(label).width;
         ctx.fillText(label, x + 2 + tw > w ? x - 2 - tw : x + 2, 9);
       }
     }
+    // 확대했으면 전체 중 어디를 보고 있는지 눈금 아래에 막대로
+    if (this.tl.view) {
+      var area = w - LABEL_W - PAD_R;
+      ctx.fillStyle = "rgba(38, 34, 30, 0.35)";
+      ctx.fillRect(LABEL_W + view.start / clip.duration * area, RULER_H - 4, Math.max(4, view.span / clip.duration * area), 3);
+    }
+    ctx.restore();
     ctx.fillStyle = "#26221e";
     ctx.fillRect(0, RULER_H - 1, w, 1);
     // 부위 줄
@@ -337,7 +425,11 @@
       ctx.fillStyle = part === self.selected ? "#26221e" : "#7d7468";
       ctx.font = (part === self.selected ? "bold " : "") + "10px 'Malgun Gothic', sans-serif";
       ctx.fillText(ROW_LABELS[part], 5, y + ROW_H - 3);
-      // 키 사이를 선으로 이어서 움직이는 구간이 보이게
+      // 키 사이를 선으로 이어서 움직이는 구간이 보이게 (시간 쪽 밖은 잘라낸다)
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(LABEL_W, y, w - LABEL_W, ROW_H);
+      ctx.clip();
       var keys = clip.tracks[part] || [];
       var cy = y + ROW_H / 2;
       if (keys.length > 1) {
@@ -362,9 +454,14 @@
         ctx.closePath();
         ctx.fill();
       });
+      ctx.restore();
     });
     ctx.fillStyle = "#26221e";
     ctx.fillRect(LABEL_W - 1, 0, 1, h);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(LABEL_W, 0, w - LABEL_W, h);
+    ctx.clip();
     // 재생 위치
     var px = Math.round(this.timeToX(this.tl.playhead, w)) + 0.5;
     ctx.fillStyle = "#c8402f";
@@ -381,7 +478,18 @@
       ctx.fillRect(Math.round(this.timeToX(clip.duration, w)) - 1, RULER_H, 2, h - RULER_H);
     }
     ctx.restore();
+    ctx.restore();
   };
+
+  /** 후보 중 화면에서 minPx 이상 떨어지는 가장 촘촘한 간격. */
+  function pickStep(steps, pxPerMs, minPx) {
+    for (var i = 0; i < steps.length; i++) {
+      if (steps[i] * pxPerMs >= minPx) {
+        return steps[i];
+      }
+    }
+    return steps[steps.length - 1];
+  }
 
   // ---------------------------------------------------------------- 시간 막대 마우스
 
@@ -466,6 +574,12 @@
   /** 줄을 두 번 누르면 그 시간에 키를 넣는다. */
   P.timelineDoubleClick = function (event) {
     var p = this.timelinePointer(event);
+    if (p.y < RULER_H) {
+      // 눈금을 두 번 누르면 전체 보기
+      this.tl.view = null;
+      this.drawTimeline();
+      return;
+    }
     var part = this.rowAt(p.y);
     if (!part || p.x < LABEL_W) {
       return;
