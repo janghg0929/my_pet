@@ -49,8 +49,9 @@ public final class PartLayout {
 	public static final List<String> PIVOTS = List.of(PIVOT_CENTER, PIVOT_TOP, PIVOT_BOTTOM, PIVOT_LEFT, PIVOT_RIGHT);
 
 	private static final int MIN_SIZE = 2;
-	private static final int MAX_SIZE = 400;
-	private static final int MAX_OFFSET = 400;
+	// 부위 크기·자리 한계 (사실상 없음: 화면보다 훨씬 크게)
+	private static final int MAX_SIZE = 2000;
+	private static final int MAX_OFFSET = 2000;
 
 	/** 부위 하나. 사진이 없으면 네모(몸 색 + 외곽선) 또는 검은 점으로 그린다. */
 	public static final class Part {

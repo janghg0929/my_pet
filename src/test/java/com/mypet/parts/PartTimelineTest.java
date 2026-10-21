@@ -82,7 +82,7 @@ class PartTimelineTest {
 		List<PartTimeline.Key> keys = walk.track(PartLayout.LEFT_LEG);
 		assertEquals(2, keys.size()); // 시간 순, 같은 시간은 마지막 것만
 		assertEquals(0, keys.get(0).t);
-		assertEquals(400, keys.get(0).scaleX);
+		assertEquals(1000, keys.get(0).scaleX);
 		assertEquals(40, keys.get(1).rotation);
 		assertFalse(walk.tracks.containsKey("tail"));
 

@@ -19,7 +19,7 @@ public final class PartAnimation {
 	/** 상황이 바뀌었을 때 자세와 움직임이 서서히 바뀌는 정도 (틱마다). */
 	public static final double FADE = 0.15;
 
-	private static final int MAX_OFFSET = 200;
+	private static final int MAX_OFFSET = 2000;
 
 	public int dx;
 	public int dy;

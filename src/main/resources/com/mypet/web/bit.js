@@ -669,9 +669,84 @@
     return result;
   }
 
+  /** 늘려 그릴 때 부드럽게 할지 (브라우저용: 앱 안 웹 엔진은 이 설정을 무시하고 늘 부드럽게 늘린다). */
+  function setSmoothing(ctx, on) {
+    ctx.imageSmoothingEnabled = on;
+    ctx.webkitImageSmoothingEnabled = on;
+  }
+
+  /** 그림의 픽셀 (RGBA). 한 번 읽으면 기억해 둔다. */
+  function pixelsOf(image) {
+    if (!image.pixels) {
+      var w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
+      var c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      var g = c.getContext("2d");
+      g.drawImage(image, 0, 0);
+      image.pixels = { w: w, h: h, data: g.getImageData(0, 0, w, h).data };
+    }
+    return image.pixels;
+  }
+
+  /**
+   * 도트 그림을 w×h 크기로 또렷하게 키운 그림. 앱 안 웹 엔진은 늘릴 때 늘 뭉개서,
+   * 칸마다 네모로 직접 칠해 만든다 (가로로 같은 색이 이어지면 한 번에). 크기별로 기억해 둔다.
+   */
+  function crispScaled(image, w, h) {
+    var dw = Math.max(1, Math.round(w)), dh = Math.max(1, Math.round(h));
+    var key = dw + "x" + dh;
+    image.crisp = image.crisp || {};
+    if (image.crisp[key]) {
+      return image.crisp[key];
+    }
+    var px = pixelsOf(image);
+    var c = document.createElement("canvas");
+    c.width = dw;
+    c.height = dh;
+    var g = c.getContext("2d");
+    var d = px.data;
+    for (var sy = 0; sy < px.h; sy++) {
+      var y0 = Math.floor(sy * dh / px.h), y1 = Math.floor((sy + 1) * dh / px.h);
+      var sx = 0;
+      while (sx < px.w) {
+        var i = (sy * px.w + sx) * 4;
+        var run = sx + 1;
+        while (run < px.w) {
+          var j = (sy * px.w + run) * 4;
+          if (d[j] !== d[i] || d[j + 1] !== d[i + 1] || d[j + 2] !== d[i + 2] || d[j + 3] !== d[i + 3]) {
+            break;
+          }
+          run++;
+        }
+        if (d[i + 3] > 0) {
+          var x0 = Math.floor(sx * dw / px.w), x1 = Math.floor(run * dw / px.w);
+          g.fillStyle = "rgba(" + d[i] + "," + d[i + 1] + "," + d[i + 2] + "," + (d[i + 3] / 255) + ")";
+          g.fillRect(x0, y0, x1 - x0, y1 - y0);
+        }
+        sx = run;
+      }
+    }
+    var keys = Object.keys(image.crisp);
+    if (keys.length > 12) {
+      image.crisp = {}; // 확대를 여러 번 바꿔도 너무 많이 기억하지 않게
+    }
+    image.crisp[key] = c;
+    return c;
+  }
+
   function drawImage(ctx, image, x, y, w, h, flip) {
     ctx.save();
-    ctx.imageSmoothingEnabled = !image.pixelArt; // 도트 그림은 또렷하게
+    if (image.pixelArt) {
+      // 도트 그림은 또렷하게: 정수 자리·크기에 미리 키운 그림을 그대로 (소수 자리면 다시 뭉개진다)
+      var left = Math.round(x), top = Math.round(y);
+      w = Math.round(x + w) - left;
+      h = Math.round(y + h) - top;
+      x = left;
+      y = top;
+      image = crispScaled(image, w, h);
+    }
+    setSmoothing(ctx, true);
     if (flip) {
       ctx.translate(x + w, y);
       ctx.scale(-1, 1);
@@ -1047,6 +1122,7 @@
     images: images,
     copyLayout: copyLayout,
     setText: setText,
+    setSmoothing: setSmoothing,
     bounds: bounds,
     motionBounds: motionBounds,
     MotionClock: MotionClock,

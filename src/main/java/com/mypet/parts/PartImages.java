@@ -18,12 +18,13 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 부위 사진 파일 (앱 데이터 폴더의 parts 폴더). 사용자가 고른 사진은 최대 256px PNG 로 줄여서 복사해 둔다.
+ * 부위 사진 파일 (앱 데이터 폴더의 parts 폴더). 사용자가 고른 사진은 PNG 로 복사해 둔다
+ * (긴 쪽이 2048px 를 넘는 아주 큰 사진만 줄인다: 화질은 그대로, 앱이 무거워지지 않게).
  * 도트 그림판으로 그린 그림은 "px_" 로 시작하는 이름으로 저장하고, 픽셀이 뭉개지지 않게 그린다.
  * 그림에서 알파가 {@link #BODY_ALPHA} 인 칸은 "몸 색" 칸이라 지금 몸 색으로 바꿔 그린다.
  */
 public final class PartImages {
-	public static final int MAX_SIDE = 256;
+	public static final int MAX_SIDE = 2048;
 	/** 도트 그림의 "몸 색" 칸 표시 (이 알파값인 픽셀은 지금 몸 색으로 칠한다). painter.js 와 같다. */
 	public static final int BODY_ALPHA = 254;
 	private static final String PIXEL_PREFIX = "px_";

@@ -321,6 +321,7 @@ class WebSettingsPreviewTest {
 		snapshot(settings[0], new File(out, "web-parts-painter.png"));
 		runScript(settings[0], "document.getElementById('paint-save').click()");
 		Thread.sleep(700);
+		snapshot(settings[0], new File(out, "web-parts-drawn.png"));
 		String bodyImage = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body().image;
 		java.awt.image.BufferedImage drawn = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
 			java.util.Base64.getDecoder().decode(drawnImage.get().substring(drawnImage.get().indexOf(',') + 1))));

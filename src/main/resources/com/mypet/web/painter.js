@@ -5,7 +5,7 @@
   "use strict";
 
   var BODY_ALPHA = 254;
-  var MAX_SIDE = 96; // 칸 수 한쪽 최대
+  var MAX_SIDE = 256; // 칸 수 한쪽 최대
   var HISTORY = 50;
   var PALETTE = [
     "#000000", "#ffffff", "#7d7468", "#c8c2b8", "#e53935", "#fb8c00", "#fdd835", "#43a047",
@@ -192,7 +192,7 @@
     c.width = w;
     c.height = h;
     var ctx = c.getContext("2d");
-    ctx.imageSmoothingEnabled = !image.pixelArt;
+    window.BitView.setSmoothing(ctx, !image.pixelArt);
     ctx.drawImage(image, 0, 0, w, h);
     var data = ctx.getImageData(0, 0, w, h).data;
     var result = new Uint8ClampedArray(data.length);
@@ -322,21 +322,28 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#f3eee4";
     ctx.fillRect(0, 0, l.cw, l.ch);
-    var body = hexToRgb(this.bodyColor());
+    // 칸마다 네모로 칠한다 (앱 안 웹 엔진은 그림을 늘리면 뭉개서). 가로로 같은 색이 이어지면 한 번에.
+    var body = "rgb(" + hexToRgb(this.bodyColor()).join(",") + ")";
+    var data = this.data, w = this.w;
+    var colorAt = function (x, y) {
+      var i = (y * w + x) * 4;
+      var a = data[i + 3];
+      if (a === 0) {
+        return (x + y) % 2 ? "#ffffff" : "#ece6da"; // 투명: 바둑판
+      }
+      return a === BODY_ALPHA ? body : "rgb(" + data[i] + "," + data[i + 1] + "," + data[i + 2] + ")";
+    };
     for (var y = 0; y < this.h; y++) {
-      for (var x = 0; x < this.w; x++) {
-        var i = (y * this.w + x) * 4;
-        var a = this.data[i + 3];
-        var px = l.ox + x * l.cell, py = l.oy + y * l.cell;
-        if (a === 0) {
-          // 투명: 바둑판
-          ctx.fillStyle = (x + y) % 2 ? "#ffffff" : "#ece6da";
-        } else if (a === BODY_ALPHA) {
-          ctx.fillStyle = "rgb(" + body[0] + "," + body[1] + "," + body[2] + ")";
-        } else {
-          ctx.fillStyle = "rgb(" + this.data[i] + "," + this.data[i + 1] + "," + this.data[i + 2] + ")";
+      var x = 0;
+      while (x < w) {
+        var color = colorAt(x, y);
+        var run = x + 1;
+        while (run < w && colorAt(run, y) === color) {
+          run++;
         }
-        ctx.fillRect(px, py, l.cell, l.cell);
+        ctx.fillStyle = color;
+        ctx.fillRect(l.ox + x * l.cell, l.oy + y * l.cell, (run - x) * l.cell, l.cell);
+        x = run;
       }
     }
     // 칸 선 (칸이 크면)

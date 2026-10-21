@@ -19,7 +19,7 @@
   // 눈금 간격 후보 (ms): 확대할수록 촘촘한 눈금
   var TICK_STEPS = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
   var LABEL_STEPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
-  var MAX_OFFSET = 200, MAX_TURN = 1080, MIN_SCALE = 10, MAX_SCALE = 400;
+  var MAX_OFFSET = 2000, MAX_TURN = 1080, MIN_SCALE = 10, MAX_SCALE = 1000;
   var ROTATE_SNAP = 15, ROTATE_SNAP_RANGE = 4;
   var FIELDS = ["dx", "dy", "rotation", "scaleX", "scaleY"];
 

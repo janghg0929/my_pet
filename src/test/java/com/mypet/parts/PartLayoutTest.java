@@ -148,8 +148,8 @@ class PartLayoutTest {
 				 "symmetric": "yes"}
 				""");
 		PartLayout layout = PartLayout.fromJson(json);
-		assertEquals(400, layout.body().x);
-		assertEquals(-400, layout.body().y);
+		assertEquals(2000, layout.body().x);
+		assertEquals(-2000, layout.body().y);
 		assertEquals(2, layout.body().w);
 		assertEquals(28, layout.body().h);
 		assertNull(layout.body().image);
@@ -186,7 +186,7 @@ class PartLayoutTest {
 	@Test
 	void importedImagesAreShrunkAndUnusedOnesDeleted(@TempDir Path dir) throws Exception {
 		File source = dir.resolve("photo.png").toFile();
-		ImageIO.write(new BufferedImage(1000, 500, BufferedImage.TYPE_INT_ARGB), "png", source);
+		ImageIO.write(new BufferedImage(4000, 2000, BufferedImage.TYPE_INT_ARGB), "png", source); // 아주 큰 사진만 줄인다
 		PartImages images = new PartImages(dir.resolve("parts"));
 
 		String keep = images.importImage(source);

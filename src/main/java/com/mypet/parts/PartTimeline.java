@@ -20,10 +20,10 @@ public final class PartTimeline {
 	public static final String BASE_PHOTO = "@base";
 	public static final int DEFAULT_DURATION_MS = 1_000;
 	public static final int MAX_KEYS = 60;
-	private static final int MAX_OFFSET = 200;
+	private static final int MAX_OFFSET = 2000;
 	private static final int MAX_TURN = 1_080;
 	private static final int MIN_SCALE = 10;
-	private static final int MAX_SCALE = 400;
+	private static final int MAX_SCALE = 1000;
 
 	/** 키프레임 하나: 그 순간의 옮기기(dx, dy), 돌리기(rotation, 도), 가로/세로 크기(%). ease = 다음 키까지 부드럽게. */
 	public static final class Key {

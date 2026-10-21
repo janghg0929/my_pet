@@ -16,7 +16,8 @@
   var ROTATE_GAP = 16; // 회전 손잡이가 부위 위로 떨어진 거리 (화면 px)
   var ROTATE_RADIUS = 5;
   var ROTATE_SNAP = 15, ROTATE_SNAP_RANGE = 4; // 15도 단위 근처에서는 딱 맞춘다
-  var MIN_SIZE = 2, MAX_SIZE = 400, MAX_OFFSET = 400, MAX_POSE_OFFSET = 200;
+  // 크기·자리 한계 (사실상 없음, PartLayout / PartAnimation 과 같다)
+  var MIN_SIZE = 2, MAX_SIZE = 2000, MAX_OFFSET = 2000, MAX_POSE_OFFSET = 2000;
   var FIELDS = ["x", "y", "w", "h", "rotation"];
   var STATE_LABELS = { always: "항상", idle: "쉴 때", walk: "걸을 때", air: "공중", grab: "잡힐 때" };
   // 같은 움직임도 부위에 따라 이름을 다르게 (몸통 흔들기 = 기우뚱, 눈 좌우 = 두리번)
