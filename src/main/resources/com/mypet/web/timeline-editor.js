@@ -1,8 +1,9 @@
-// 모습 꾸미기 → 고급: 영상 편집처럼 시간 막대에 키프레임(◆)을 찍는다. PartsEditor 에 기능을 더한다.
+// 모습 꾸미기 → 고급: 영상 편집처럼 시간 막대에 장면(◆)을 찍는다. PartsEditor 에 기능을 더한다.
 // 상황(항상/쉴 때/걸을 때/공중/잡힐 때)마다 클립 하나, 부위마다 키 줄 하나.
-// 재생 위치(빨간 선)를 고르고 미리보기에서 부위를 끌거나(옮기기) 돌리거나(회전) 모서리를 끌면(크기) 그 시간에 키가 생긴다.
-// 키 사이는 부드럽게 이어지고, 실제 비트는 그 상황이 시작될 때 0초부터 재생한다(이어서 = 멈췄던 데서 계속).
-// 키에 사진을 넣으면 그 시간부터 다음 사진 키까지 부위 사진이 바뀐다 (PartTimeline.java, bit.js clipAt / clipPhotoAt).
+// 재생 위치(빨간 선)에서 비트를 끌거나(옮기기) 돌리거나(회전) 모서리를 끌거나(크기) 사진을 바꾸고 [◆ 추가]를 누르면
+// 그 시간의 비트 모습 전체(모든 부위의 자리·크기·사진)가 장면 하나로 저장된다. 추가하기 전에는 미리보기에서만 바뀐다.
+// 장면 사이는 부드럽게 이어지고(사진은 그 장면에서 딱 바뀜), 실제 비트는 그 상황이 시작될 때 0초부터 재생한다
+// (이어서 = 멈췄던 데서 계속). 계산은 PartTimeline.java, bit.js clipAt / clipPhotoAt 과 같다.
 (function () {
   "use strict";
 
@@ -12,6 +13,7 @@
   var STATE_LABELS = { always: "항상", idle: "쉴 때", walk: "걸을 때", air: "공중", grab: "잡힐 때" };
   var ROWS = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
   var ROW_LABELS = { body: "몸통", eyes: "눈", leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리" };
+  var MIRROR = { leftArm: "rightArm", rightArm: "leftArm", leftLeg: "rightLeg", rightLeg: "leftLeg" };
   var LABEL_W = 46, RULER_H = 16, ROW_H = 13, PAD_R = 8;
   var KEY_HIT = 6, MAX_KEYS = 60;
   var MIN_VIEW_MS = 100, TIME_ZOOM_STEP = 1.25; // 시간 막대를 가장 크게 확대하면 0.1초가 한 화면
@@ -31,7 +33,8 @@
   P.initTimeline = function () {
     var self = this;
     // view: 시간 막대에 보이는 구간 {start, span} (ms), null = 전체
-    this.tl = { state: "idle", playhead: 0, playing: false, drag: null, view: null };
+    // drafts: 아직 [◆ 추가] 하지 않은 변경 ("상황@시간" → {state, t, parts: {부위: 값}})
+    this.tl = { state: "idle", playhead: 0, playing: false, drag: null, view: null, drafts: {} };
     this.tlCanvas = document.getElementById("tl-canvas");
 
     var states = document.getElementById("tl-states");
@@ -51,29 +54,15 @@
     });
 
     document.getElementById("tl-play").addEventListener("click", function () { self.timelineTogglePlay(); });
-    document.getElementById("tl-add").addEventListener("click", function () {
-      self.ensureKey(self.selected, self.tl.playhead);
-      self.afterChange(self.selected);
-      self.refreshControls();
-      self.draw();
-      self.commit(0);
-    });
-    document.getElementById("tl-delete").addEventListener("click", function () { self.deleteKeyAtPlayhead(); });
-    // 사진 넣기/빼기: 지금 시간의 키에 사진을 넣고 뺀다 (시간 막대에 저장, 부위의 원래 사진은 일반 탭에서)
+    document.getElementById("tl-add").addEventListener("click", function () { self.addFrame(self.tl.playhead); });
+    document.getElementById("tl-delete").addEventListener("click", function () { self.deleteFrame(); });
+    // 사진 넣기/빼기: 지금 시간의 비트 모습에서 고른 부위 사진을 바꾼다 ([◆ 추가]로 저장)
     document.getElementById("tl-photo").addEventListener("click", function () {
-      self.tl.pendingPhoto = { state: self.tl.state, part: self.selected, t: self.tl.playhead };
+      self.tl.pendingPhoto = { state: self.tl.state, t: self.tl.playhead, part: self.selected };
       self.send("pickKeyImage");
     });
     document.getElementById("tl-photo-remove").addEventListener("click", function () {
-      var key = self.keyAtPlayhead(self.selected);
-      if (key && key.photo) {
-        key.photo = null;
-        key.flip = false;
-        self.afterChange(self.selected);
-        self.refreshControls();
-        self.draw();
-        self.commit(0);
-      }
+      self.setDraft(self.selected, { photo: BV.BASE_PHOTO, flip: false });
     });
 
     FIELDS.forEach(function (field) {
@@ -83,12 +72,10 @@
         if (isNaN(value)) {
           return;
         }
-        var key = self.ensureKey(self.selected, self.tl.playhead);
-        key[field] = field === "rotation" ? clamp(value, -MAX_TURN, MAX_TURN)
+        var change = {};
+        change[field] = field === "rotation" ? clamp(value, -MAX_TURN, MAX_TURN)
           : (field === "scaleX" || field === "scaleY") ? clamp(value, MIN_SCALE, MAX_SCALE) : clamp(value, -MAX_OFFSET, MAX_OFFSET);
-        self.afterChange(self.selected);
-        self.draw();
-        self.commit(300);
+        self.setDraft(self.selected, change, true);
       });
       input.addEventListener("change", function () { self.refreshControls(); });
     });
@@ -122,29 +109,23 @@
       self.clip().restart = !event.target.checked;
       self.commit(0);
     });
-    // 키 사진: 그대로 / 원래 사진 / 이미 쓴 사진 / 새 사진 고르기
+    // 사진 칸: 원래 사진 / 이미 쓴 사진 / 새 사진 고르기
     var keyPhoto = document.getElementById("tl-key-photo");
     keyPhoto.addEventListener("change", function () {
       var value = keyPhoto.value;
       if (value === "@pick") {
-        self.tl.pendingPhoto = { state: self.tl.state, part: self.selected, t: self.tl.playhead };
+        self.tl.pendingPhoto = { state: self.tl.state, t: self.tl.playhead, part: self.selected };
         self.send("pickKeyImage");
         self.refreshControls();
         return;
       }
-      var key = self.ensureKey(self.selected, self.tl.playhead);
-      key.photo = value || null;
-      key.flip = false;
-      self.afterChange(self.selected);
-      self.refreshControls();
-      self.draw();
-      self.commit(0);
+      self.setDraft(self.selected, { photo: value || BV.BASE_PHOTO, flip: false });
     });
+    // 부드럽게: 지금 장면의 키 전체
     document.getElementById("tl-ease").addEventListener("change", function (event) {
-      var key = self.keyAtPlayhead(self.selected);
-      if (key) {
-        key.ease = event.target.checked;
-        self.afterChange(self.selected);
+      var keys = self.frameKeys(self.tl.playhead);
+      if (keys.length) {
+        keys.forEach(function (k) { k.ease = event.target.checked; });
         self.draw();
         self.commit(0);
       }
@@ -179,41 +160,6 @@
     document.addEventListener("mouseup", function () { self.timelineMouseUp(); });
   };
 
-  /** (Java 가 부름) 키 사진을 골랐다: 고를 때의 상황·부위·시간 키에 넣는다. 취소면 name = null. */
-  P.onPickedImage = function (name) {
-    var pending = this.tl.pendingPhoto;
-    this.tl.pendingPhoto = null;
-    if (!pending || !name) {
-      this.refreshControls();
-      return;
-    }
-    var state = this.tl.state;
-    this.tl.state = pending.state;
-    var key = this.ensureKey(pending.part, pending.t);
-    key.photo = name;
-    key.flip = false;
-    this.tl.state = state;
-    this.afterChange(pending.part);
-    this.send("requestImage", name);
-    this.refreshControls();
-    this.draw();
-    this.commit(0);
-  };
-
-  /** 고른 부위의 키에 쓰인 사진들 (모든 상황, 순서대로) — 사진 칸에서 다시 고를 수 있게. */
-  P.keyPhotos = function (part) {
-    var names = [];
-    var timeline = this.layout.timeline;
-    BV.STATES.forEach(function (state) {
-      (timeline[state].tracks[part] || []).forEach(function (k) {
-        if (k.photo && k.photo !== BV.BASE_PHOTO && names.indexOf(k.photo) < 0) {
-          names.push(k.photo);
-        }
-      });
-    });
-    return names;
-  };
-
   /** 지금 고른 상황의 클립. */
   P.clip = function () {
     return this.layout.timeline[this.tl.state];
@@ -223,8 +169,7 @@
     return this.clip().tracks[part] || [];
   };
 
-  P.keyAtPlayhead = function (part) {
-    var t = this.tl.playhead;
+  P.keyAt = function (part, t) {
     var keys = this.track(part);
     for (var i = 0; i < keys.length; i++) {
       if (Math.abs(keys[i].t - t) < 1) {
@@ -234,80 +179,224 @@
     return null;
   };
 
-  /** 지금 시간의 클립 값 (키가 없으면 기본 모양) — 키를 새로 만들 때 이 값으로 시작해서 모양이 튀지 않게. */
-  P.clipValuesAt = function (part, t) {
-    var c = BV.clipAt(this.clip(), part, t);
-    if (!c) {
-      return BV.newKey(t);
-    }
-    var key = BV.newKey(t);
-    key.dx = Math.round(c.dx);
-    key.dy = Math.round(c.dy);
-    key.rotation = Math.round(c.rotation);
-    key.scaleX = Math.round(c.scaleX * 100);
-    key.scaleY = Math.round(c.scaleY * 100);
-    return key;
+  P.keyAtPlayhead = function (part) {
+    return this.keyAt(part, this.tl.playhead);
   };
 
-  /** part 줄의 t 시간 키 (없으면 지금 모양으로 만든다). */
-  P.ensureKey = function (part, t) {
-    var existing = null;
-    var keys = this.track(part);
-    for (var i = 0; i < keys.length; i++) {
-      if (Math.abs(keys[i].t - t) < 1) {
-        existing = keys[i];
+  /** t 시간 장면의 키들 (모든 부위). */
+  P.frameKeys = function (t) {
+    var self = this;
+    var keys = [];
+    ROWS.forEach(function (part) {
+      var key = self.keyAt(part, t);
+      if (key) {
+        keys.push(key);
       }
-    }
-    if (existing) {
-      return existing;
-    }
-    var key = this.clipValuesAt(part, t);
-    key.t = Math.round(t);
-    var clip = this.clip();
-    keys = clip.tracks[part] = (clip.tracks[part] || []).concat([key]);
-    keys.sort(function (a, b) { return a.t - b.t; });
-    if (keys.length > MAX_KEYS) {
-      keys.splice(keys.indexOf(key) === 0 ? 1 : 0, 1);
-    }
-    return key;
+    });
+    return keys;
   };
 
-  P.deleteKeyAtPlayhead = function () {
-    var key = this.keyAtPlayhead(this.selected);
-    if (!key) {
-      return;
+  // ---------------------------------------------------------------- 지금 시간의 비트 모습 (추가 전 변경 포함)
+
+  function draftId(state, t) {
+    return state + "@" + Math.round(t);
+  }
+
+  /** 지금 상황·시간의 아직 추가 안 한 변경 (없으면 null). */
+  P.draftHere = function () {
+    return this.tl.drafts[draftId(this.tl.state, this.tl.playhead)] || null;
+  };
+
+  /** 클립에 저장된 t 시간의 부위 모양과 사진 (키 사이는 이어진 값). */
+  P.savedValuesAt = function (part, t) {
+    var values = BV.newKey(t);
+    var c = BV.clipAt(this.clip(), part, t);
+    if (c) {
+      values.dx = Math.round(c.dx);
+      values.dy = Math.round(c.dy);
+      values.rotation = Math.round(c.rotation);
+      values.scaleX = Math.round(c.scaleX * 100);
+      values.scaleY = Math.round(c.scaleY * 100);
     }
-    var clip = this.clip();
-    var keys = clip.tracks[this.selected].filter(function (k) { return k !== key; });
-    if (keys.length) {
-      clip.tracks[this.selected] = keys;
+    var photo = BV.clipPhotoAt(this.clip(), part, t);
+    values.photo = photo ? photo.name : BV.BASE_PHOTO;
+    values.flip = photo ? photo.flip : false;
+    return values;
+  };
+
+  /** 지금 시간의 부위 모양과 사진: 추가 안 한 변경이 있으면 그것, 아니면 저장된 값. */
+  P.valuesAt = function (part) {
+    var draft = this.draftHere();
+    if (draft && draft.parts[part]) {
+      return draft.parts[part];
+    }
+    return this.savedValuesAt(part, this.tl.playhead);
+  };
+
+  /** 지금 시간의 비트 모습을 바꾼다 ([◆ 추가] 전까지는 미리보기에서만). 좌우 맞추기면 반대쪽도 거울처럼. */
+  P.setDraftAt = function (state, t, part, change) {
+    var id = draftId(state, t);
+    var draft = this.tl.drafts[id] || (this.tl.drafts[id] = { state: state, t: Math.round(t), parts: {} });
+    var stateBefore = this.tl.state, timeBefore = this.tl.playhead;
+    this.tl.state = state;
+    this.tl.playhead = t;
+    var values = draft.parts[part] || JSON.parse(JSON.stringify(this.valuesAt(part)));
+    Object.keys(change).forEach(function (f) { values[f] = change[f]; });
+    draft.parts[part] = values;
+    var mirror = MIRROR[part];
+    if (mirror && this.layout.symmetric) {
+      var m = JSON.parse(JSON.stringify(values));
+      m.dx = -values.dx;
+      m.rotation = -values.rotation;
+      m.flip = values.photo !== BV.BASE_PHOTO && !values.flip;
+      draft.parts[mirror] = m;
+    }
+    this.tl.state = stateBefore;
+    this.tl.playhead = timeBefore;
+  };
+
+  P.setDraft = function (part, change, typing) {
+    this.setDraftAt(this.tl.state, this.tl.playhead, part, change);
+    if (!typing) {
+      this.refreshControls();
     } else {
-      delete clip.tracks[this.selected];
+      this.refreshTimelineButtons();
     }
-    this.afterChange(this.selected);
+    this.draw();
+  };
+
+  /** (Java 가 부름) 사진을 골랐다: 고를 때의 상황·시간·부위 모습에 넣는다. 취소면 name = null. */
+  P.onPickedImage = function (name) {
+    var pending = this.tl.pendingPhoto;
+    this.tl.pendingPhoto = null;
+    if (pending && name) {
+      this.setDraftAt(pending.state, pending.t, pending.part, { photo: name, flip: false });
+      this.send("requestImage", name);
+    }
+    this.refreshControls();
+    this.draw();
+  };
+
+  /** 고른 부위의 키에 쓰인 사진들 (모든 상황, 순서대로) — 사진 칸에서 다시 고를 수 있게. */
+  P.keyPhotos = function (part) {
+    var names = [];
+    var add = function (name) {
+      if (name && name !== BV.BASE_PHOTO && names.indexOf(name) < 0) {
+        names.push(name);
+      }
+    };
+    var timeline = this.layout.timeline;
+    BV.STATES.forEach(function (state) {
+      (timeline[state].tracks[part] || []).forEach(function (k) { add(k.photo); });
+    });
+    var drafts = this.tl.drafts;
+    Object.keys(drafts).forEach(function (id) {
+      var values = drafts[id].parts[part];
+      add(values && values.photo);
+    });
+    return names;
+  };
+
+  // ---------------------------------------------------------------- 장면 추가/빼기
+
+  /** t 시간에 지금 비트 모습 전체(모든 부위의 자리·크기·사진)를 장면으로 저장한다. */
+  P.addFrame = function (t) {
+    var self = this;
+    var timeBefore = this.tl.playhead;
+    this.tl.playhead = t;
+    var values = {};
+    ROWS.forEach(function (part) {
+      values[part] = JSON.parse(JSON.stringify(self.valuesAt(part)));
+    });
+    var clip = this.clip();
+    ROWS.forEach(function (part) {
+      var key = self.keyAt(part, t);
+      if (!key) {
+        key = BV.newKey(Math.round(t));
+        var keys = clip.tracks[part] = (clip.tracks[part] || []).concat([key]);
+        keys.sort(function (a, b) { return a.t - b.t; });
+        if (keys.length > MAX_KEYS) {
+          keys.splice(keys.indexOf(key) === 0 ? 1 : 0, 1);
+        }
+      }
+      var v = values[part];
+      FIELDS.forEach(function (f) { key[f] = v[f]; });
+      key.photo = v.photo || BV.BASE_PHOTO;
+      key.flip = !!v.flip && key.photo !== BV.BASE_PHOTO;
+    });
+    delete this.tl.drafts[draftId(this.tl.state, t)];
+    this.tl.playhead = timeBefore;
     this.refreshControls();
     this.draw();
     this.commit(0);
   };
 
-  // ---------------------------------------------------------------- 미리보기
-
-  /** 고른 상황이 playhead 만큼 지났을 때 부위 모양 (일반 애니메이션 + 시간 막대, 실제 비트와 같은 계산). */
-  P.timelineTransformAt = function (key) {
-    var state = this.tl.state;
-    var weights = {};
-    if (state !== "always") {
-      weights[state] = 1;
+  /** 지금 시간의 장면을 뺀다 (추가 안 한 변경만 있으면 그 변경을 버린다). */
+  P.deleteFrame = function () {
+    var self = this;
+    var t = this.tl.playhead;
+    var id = draftId(this.tl.state, t);
+    var hadDraft = !!this.tl.drafts[id];
+    delete this.tl.drafts[id];
+    var clip = this.clip();
+    var removed = false;
+    ROWS.forEach(function (part) {
+      var key = self.keyAt(part, t);
+      if (!key) {
+        return;
+      }
+      removed = true;
+      var keys = clip.tracks[part].filter(function (k) { return k !== key; });
+      if (keys.length) {
+        clip.tracks[part] = keys;
+      } else {
+        delete clip.tracks[part];
+      }
+    });
+    if (removed || hadDraft) {
+      this.refreshControls();
+      this.draw();
     }
-    var elapsed = { always: this.tl.playhead };
-    elapsed[state] = this.tl.playhead;
-    var ticks = Math.round(this.tl.playhead * 64 / 1000);
-    return BV.combineTransforms(BV.partTransform(this.layout[key], ticks, weights),
-      BV.timelineTransform(this.layout.timeline, key, weights, elapsed));
+    if (removed) {
+      this.commit(0);
+    }
   };
 
-  /** 고른 상황이 playhead 만큼 지났을 때 부위 사진 (실제 비트와 같은 계산). */
-  P.timelinePhotoAt = function (key) {
+  // ---------------------------------------------------------------- 미리보기
+
+  function asTransform(v) {
+    return { dx: v.dx, dy: v.dy, rotation: v.rotation, scaleX: v.scaleX / 100, scaleY: v.scaleY / 100 };
+  }
+
+  /** 고른 상황이 playhead 만큼 지났을 때 부위 모양 (일반 애니메이션 + "항상" 클립 + 이 상황의 모습). */
+  P.timelineTransformAt = function (part) {
+    var state = this.tl.state;
+    var weights = {};
+    if (state !== "always") {
+      weights[state] = 1;
+    }
+    var ticks = Math.round(this.tl.playhead * 64 / 1000);
+    var t = BV.partTransform(this.layout[part], ticks, weights);
+    if (state !== "always") {
+      var always = BV.clipAt(this.layout.timeline.always, part, this.tl.playhead);
+      if (always) {
+        t = BV.combineTransforms(t, always);
+      }
+    }
+    var draft = this.draftHere();
+    if (draft && draft.parts[part]) {
+      return BV.combineTransforms(t, asTransform(draft.parts[part]));
+    }
+    var saved = BV.clipAt(this.clip(), part, this.tl.playhead);
+    return saved ? BV.combineTransforms(t, saved) : t;
+  };
+
+  /** 고른 상황이 playhead 만큼 지났을 때 부위 사진 (추가 안 한 변경 포함, 실제 비트와 같은 계산). */
+  P.timelinePhotoAt = function (part) {
+    var draft = this.draftHere();
+    if (draft && draft.parts[part]) {
+      return { name: draft.parts[part].photo, flip: !!draft.parts[part].flip };
+    }
     var state = this.tl.state;
     var weights = {};
     if (state !== "always") {
@@ -315,7 +404,7 @@
     }
     var elapsed = { always: this.tl.playhead };
     elapsed[state] = this.tl.playhead;
-    return BV.timelinePhoto(this.layout.timeline, key, weights, elapsed);
+    return BV.timelinePhoto(this.layout.timeline, part, weights, elapsed);
   };
 
   P.timelinePose = function () {
@@ -372,6 +461,20 @@
 
   // ---------------------------------------------------------------- 칸
 
+  /** 버튼만 (숫자 칸을 고치는 중에도 부를 수 있게). */
+  P.refreshTimelineButtons = function () {
+    var draft = this.draftHere();
+    var frame = this.frameKeys(this.tl.playhead).length > 0;
+    var add = document.getElementById("tl-add");
+    add.classList.toggle("btn-primary", !!draft);
+    add.textContent = draft ? "◆ 추가 *" : "◆ 추가";
+    add.title = draft ? "바꾼 모습을 이 시간 장면으로 저장 (아직 저장 안 됨)" : "지금 비트 모습을 이 시간 장면으로 저장";
+    document.getElementById("tl-delete").disabled = !frame && !draft;
+    var hasPhoto = this.valuesAt(this.selected).photo !== BV.BASE_PHOTO;
+    document.getElementById("tl-photo").textContent = hasPhoto ? "사진 바꾸기" : "사진 넣기";
+    document.getElementById("tl-photo-remove").disabled = !hasPhoto;
+  };
+
   P.refreshTimelineControls = function () {
     var self = this;
     var tl = this.tl;
@@ -379,33 +482,30 @@
     Array.prototype.forEach.call(document.querySelectorAll("#tl-states .seg"), function (button) {
       var state = button.getAttribute("data-key");
       button.classList.toggle("selected", state === tl.state);
-      // 키가 있는 상황은 ◆ 표시
+      // 장면이 있는 상황은 ◆ 표시
       var hasKeys = Object.keys(self.layout.timeline[state].tracks).some(function (part) {
         return self.layout.timeline[state].tracks[part].length > 0;
       });
       button.textContent = STATE_LABELS[state] + (hasKeys ? " ◆" : "");
     });
     document.getElementById("tl-play").textContent = tl.playing ? "❚❚" : "▶";
-    var key = this.keyAtPlayhead(this.selected);
-    var values = key || this.clipValuesAt(this.selected, tl.playhead);
+    var values = this.valuesAt(this.selected);
     FIELDS.forEach(function (field) {
       var input = document.getElementById("tl-" + field);
       if (document.activeElement !== input) {
         input.value = values[field];
       }
     });
-    document.getElementById("tl-delete").disabled = !key;
-    document.getElementById("tl-add").disabled = !!key;
     var duration = document.getElementById("tl-duration");
     if (document.activeElement !== duration) {
       duration.value = (clip.duration / 1000).toFixed(1);
     }
     document.getElementById("tl-loop").checked = clip.loop;
     document.getElementById("tl-continue").checked = !clip.restart;
-    // 키 사진 칸
+    // 사진 칸
     var keyPhoto = document.getElementById("tl-key-photo");
     if (document.activeElement !== keyPhoto) {
-      var options = [["", "그대로"], [BV.BASE_PHOTO, "원래 사진"]];
+      var options = [[BV.BASE_PHOTO, "원래 사진"]];
       this.keyPhotos(this.selected).forEach(function (name, i) {
         options.push([name, "사진 " + (i + 1)]);
       });
@@ -417,16 +517,13 @@
         option.textContent = o[1];
         keyPhoto.appendChild(option);
       });
-      keyPhoto.value = key && key.photo ? key.photo : "";
+      keyPhoto.value = values.photo || BV.BASE_PHOTO;
     }
-    var keyHasPhoto = !!(key && key.photo);
-    var photo = document.getElementById("tl-photo");
-    photo.textContent = keyHasPhoto ? "사진 바꾸기" : "사진 넣기";
-    photo.title = (tl.playhead / 1000).toFixed(2) + "초부터 " + ROW_LABELS[this.selected] + " 사진 바꾸기 (키에 저장)";
-    document.getElementById("tl-photo-remove").disabled = !keyHasPhoto;
+    var frame = this.frameKeys(tl.playhead);
     var ease = document.getElementById("tl-ease");
-    ease.checked = key ? key.ease : true;
-    ease.disabled = !key;
+    ease.checked = frame.length ? frame[0].ease : true;
+    ease.disabled = !frame.length;
+    this.refreshTimelineButtons();
   };
 
   // ---------------------------------------------------------------- 시간 막대 그리기
@@ -475,6 +572,15 @@
     this.tl.view = { start: v.start + direction * v.span * 0.15, span: v.span };
     this.drawTimeline();
   };
+
+  function diamond(ctx, kx, cy, r) {
+    ctx.beginPath();
+    ctx.moveTo(kx, cy - r);
+    ctx.lineTo(kx + r, cy);
+    ctx.lineTo(kx, cy + r);
+    ctx.lineTo(kx - r, cy);
+    ctx.closePath();
+  }
 
   P.drawTimeline = function () {
     var canvas = this.tlCanvas;
@@ -525,6 +631,9 @@
     ctx.restore();
     ctx.fillStyle = "#26221e";
     ctx.fillRect(0, RULER_H - 1, w, 1);
+    // 이 상황의 추가 안 한 변경
+    var drafts = Object.keys(this.tl.drafts).map(function (id) { return self.tl.drafts[id]; })
+      .filter(function (draft) { return draft.state === self.tl.state; });
     // 부위 줄
     ROWS.forEach(function (part, i) {
       var y = RULER_H + i * ROW_H;
@@ -550,29 +659,35 @@
       }
       keys.forEach(function (k) {
         var kx = self.timeToX(k.t, w);
-        var current = part === self.selected && Math.abs(k.t - self.tl.playhead) < 1;
+        var current = Math.abs(k.t - self.tl.playhead) < 1;
         ctx.fillStyle = current ? "#c8402f" : "#26221e";
-        ctx.beginPath();
         if (k.ease) {
           // 부드럽게 = ◆
-          ctx.moveTo(kx, cy - 4.5);
-          ctx.lineTo(kx + 4.5, cy);
-          ctx.lineTo(kx, cy + 4.5);
-          ctx.lineTo(kx - 4.5, cy);
+          diamond(ctx, kx, cy, 4.5);
         } else {
           // 일정하게 = ■
+          ctx.beginPath();
           ctx.rect(kx - 3.5, cy - 3.5, 7, 7);
         }
-        ctx.closePath();
         ctx.fill();
-        if (k.photo) {
-          // 사진 키: 오른쪽 위 작은 네모 (원래 사진으로 돌아가는 키는 빈 네모)
-          ctx.fillStyle = k.photo === BV.BASE_PHOTO ? "#ffffff" : "#4fc3f7";
+        if (k.photo && k.photo !== BV.BASE_PHOTO) {
+          // 사진이 바뀐 장면: 오른쪽 위 작은 파란 네모
+          ctx.fillStyle = "#4fc3f7";
           ctx.fillRect(kx + 2, cy - 6, 5, 5);
           ctx.strokeStyle = "#26221e";
           ctx.lineWidth = 1;
           ctx.strokeRect(kx + 2.5, cy - 5.5, 4, 4);
         }
+      });
+      // 추가 안 한 변경: 주황 빈 ◇
+      drafts.forEach(function (draft) {
+        if (!draft.parts[part]) {
+          return;
+        }
+        ctx.strokeStyle = "#e08a1e";
+        ctx.lineWidth = 1.5;
+        diamond(ctx, self.timeToX(draft.t, w), cy, 4.5);
+        ctx.stroke();
       });
       ctx.restore();
     });
@@ -634,13 +749,13 @@
     if (p.x < LABEL_W) {
       return;
     }
-    // 키를 눌렀으면 그 키로 가고, 끌어서 시간을 옮긴다
+    // ◆를 눌렀으면 그 장면으로 가고, 끌면 장면(모든 부위 키)의 시간을 옮긴다
     if (part) {
       var keys = this.track(part);
       for (var i = 0; i < keys.length; i++) {
         if (Math.abs(this.timeToX(keys[i].t, p.w) - p.x) <= KEY_HIT) {
           this.tl.playhead = keys[i].t;
-          this.tl.drag = { retime: keys[i], part: part, moved: false };
+          this.tl.drag = { frame: this.frameKeys(keys[i].t), from: keys[i].t, moved: false };
           this.refreshControls();
           this.draw();
           return;
@@ -657,6 +772,7 @@
   };
 
   P.timelineMouseMove = function (event) {
+    var self = this;
     var drag = this.tl && this.tl.drag;
     if (!drag) {
       return;
@@ -665,15 +781,18 @@
     var t = this.xToTime(p.x, p.w);
     if (drag.scrub) {
       this.tl.playhead = t;
-    } else if (drag.retime && drag.retime.t !== t) {
-      // 같은 시간에 다른 키가 있으면 그 자리로는 못 간다
-      var others = this.track(drag.part).filter(function (k) { return k !== drag.retime && Math.abs(k.t - t) < 1; });
-      if (!others.length) {
-        drag.retime.t = t;
-        this.track(drag.part).sort(function (a, b) { return a.t - b.t; });
+    } else if (drag.frame && drag.frame[0].t !== t) {
+      // 옮길 자리에 다른 장면이 있으면 못 간다
+      var blocked = ROWS.some(function (part) {
+        return self.track(part).some(function (k) { return drag.frame.indexOf(k) < 0 && Math.abs(k.t - t) < 1; });
+      });
+      if (!blocked) {
+        drag.frame.forEach(function (k) { k.t = t; });
+        ROWS.forEach(function (part) {
+          self.track(part).sort(function (a, b) { return a.t - b.t; });
+        });
         this.tl.playhead = t;
         drag.moved = true;
-        this.afterChange(drag.part);
       }
     }
     this.refreshControls();
@@ -687,11 +806,19 @@
     }
     this.tl.drag = null;
     if (drag.moved) {
+      // 옮긴 장면에 추가 안 한 변경이 있었으면 같이 옮긴다
+      var from = draftId(this.tl.state, drag.from);
+      var to = draftId(this.tl.state, drag.frame[0].t);
+      if (this.tl.drafts[from] && !this.tl.drafts[to]) {
+        this.tl.drafts[to] = this.tl.drafts[from];
+        this.tl.drafts[to].t = drag.frame[0].t;
+        delete this.tl.drafts[from];
+      }
       this.commit(0);
     }
   };
 
-  /** 줄을 두 번 누르면 그 시간에 키를 넣는다. */
+  /** 줄을 두 번 누르면 그 시간에 지금 비트 모습을 장면으로 추가한다. */
   P.timelineDoubleClick = function (event) {
     var p = this.timelinePointer(event);
     if (p.y < RULER_H) {
@@ -705,14 +832,10 @@
       return;
     }
     this.tl.playhead = this.xToTime(p.x, p.w);
-    this.ensureKey(part, this.tl.playhead);
-    this.afterChange(part);
-    this.refreshControls();
-    this.draw();
-    this.commit(0);
+    this.addFrame(this.tl.playhead);
   };
 
-  /** 고급에서 Ctrl 없는 키: Delete/Backspace = 지금 키 지우기, 스페이스 = 재생/멈춤. */
+  /** 고급에서 Ctrl 없는 키: Delete/Backspace = 지금 장면 빼기, 스페이스 = 재생/멈춤, Enter = 장면 추가. */
   P.timelineKey = function (event) {
     var active = document.activeElement;
     if (active && (active.tagName === "INPUT" || active.tagName === "SELECT")) {
@@ -720,20 +843,23 @@
     }
     if (event.key === "Delete" || event.key === "Backspace" || event.keyCode === 46 || event.keyCode === 8) {
       event.preventDefault();
-      this.deleteKeyAtPlayhead();
+      this.deleteFrame();
     } else if (event.key === " " || event.keyCode === 32) {
       event.preventDefault();
       this.timelineTogglePlay();
+    } else if (event.key === "Enter" || event.keyCode === 13) {
+      event.preventDefault();
+      this.addFrame(this.tl.playhead);
     }
   };
 
-  // ---------------------------------------------------------------- 미리보기에서 끌어서 키 만들기
+  // ---------------------------------------------------------------- 미리보기에서 끌어서 모습 바꾸기
 
   P.timelineStartDrag = function (target, p) {
     this.tl.playing = false;
     this.updateAnimation();
     var r = this.partRect(target.key, this.previewPose());
-    var base = this.keyAtPlayhead(target.key) || this.clipValuesAt(target.key, this.tl.playhead);
+    var base = this.valuesAt(target.key);
     this.drag = {
       timeline: true, key: target.key, rotate: !!target.rotate, resize: !!target.resize,
       startX: p.x, startY: p.y, base: { dx: base.dx, dy: base.dy, rotation: base.rotation, scaleX: base.scaleX, scaleY: base.scaleY },
@@ -767,13 +893,10 @@
     }
     var changed = FIELDS.some(function (f) { return values[f] !== b[f]; });
     if (!changed && !drag.moved) {
-      return; // 누르기만 하면 키를 만들지 않는다
+      return; // 누르기만 하면 바꾸지 않는다
     }
-    var key = this.ensureKey(drag.key, this.tl.playhead);
-    FIELDS.forEach(function (f) { key[f] = values[f]; });
-    drag.moved = true;
-    this.afterChange(drag.key);
-    this.refreshControls();
-    this.draw();
+    // 저장은 [◆ 추가] 때: 여기서는 미리보기 모습만 바꾼다 (끝나도 commit 하지 않게 moved 는 두지 않는다)
+    drag.edited = true;
+    this.setDraft(drag.key, values);
   };
 })();

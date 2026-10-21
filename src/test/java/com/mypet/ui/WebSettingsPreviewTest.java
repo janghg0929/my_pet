@@ -346,6 +346,7 @@ class WebSettingsPreviewTest {
 			+ " var ed = window.bitPartsEditor; ed.tl.playhead = 0; ed.refreshControls(); document.getElementById('tl-add').click();"
 			+ " ed.tl.playhead = 400; ed.refreshControls();"
 			+ " var r = document.getElementById('tl-rotation'); r.value = '120'; r.dispatchEvent(new Event('input'));"
+			+ " document.getElementById('tl-add').click();"
 			+ " document.getElementById('tl-duration').value = '0.8'; document.getElementById('tl-duration').dispatchEvent(new Event('change'));"
 			+ " document.getElementById('tl-loop').click();"
 			+ " ed.tl.playhead = 200; ed.refreshControls(); ed.draw();");
@@ -368,23 +369,32 @@ class WebSettingsPreviewTest {
 		runScript(settings[0], "var ed = window.bitPartsEditor; ed.tl.playhead = 600; ed.refreshControls();"
 			+ " document.getElementById('tl-photo').click();"
 			+ " document.getElementById('tl-continue').click();");
+		Thread.sleep(300);
+		// 사진을 바꾸기만 하면 저장 안 됨 → [◆ 추가] 로 그 시간의 비트 모습 전체를 장면으로 저장
+		String addLabel = evalScript(settings[0], "document.getElementById('tl-add').textContent");
+		runScript(settings[0], "document.getElementById('tl-add').click()");
 		Thread.sleep(800);
 		com.mypet.parts.PartTimeline.Clip photoClip = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()))
 			.timeline.clips.get("air");
 		com.mypet.parts.PartTimeline.Photo photoAt = photoClip.photoAt("leftArm", 700);
 		com.mypet.parts.PartTimeline.Photo mirroredPhoto = photoClip.photoAt("rightArm", 700);
-		System.out.println("key photo: left=" + photoAt + " right=" + mirroredPhoto + " restart=" + photoClip.restart
+		System.out.println("key photo: before add button=" + addLabel + " left=" + photoAt + " right=" + mirroredPhoto + " restart=" + photoClip.restart
 			+ " | select shows " + evalScript(settings[0], "document.getElementById('tl-key-photo').selectedOptions[0].textContent"));
-		assertTrue(photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart, "키 사진 / 이어서");
+		assertTrue(addLabel.contains("*") && photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart,
+			"장면 사진 / 이어서");
 		snapshot(settings[0], new File(out, "web-parts-keyphoto.png"));
 		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
-		// [사진 빼기]: 그 키의 사진을 뺀다
-		runScript(settings[0], "document.getElementById('tl-photo-remove').click()");
+		// 0.4초 장면(원래 사진) → 0.6초 장면(바꾼 사진): 그 사이엔 원래, 0.6초부터 바꾼 사진
+		com.mypet.parts.PartTimeline.Photo before = photoClip.photoAt("leftArm", 500);
+		System.out.println("photo at 0.5s: " + before);
+		assertTrue(before != null && before.base(), "앞 장면은 원래 사진");
+		// [사진 빼기] + [◆ 추가]: 그 장면을 원래 사진으로
+		runScript(settings[0], "document.getElementById('tl-photo-remove').click(); document.getElementById('tl-add').click();");
 		Thread.sleep(500);
 		com.mypet.parts.PartTimeline.Photo afterRemove = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()))
 			.timeline.clips.get("air").photoAt("leftArm", 700);
 		System.out.println("after photo remove: " + afterRemove);
-		assertTrue(afterRemove == null, "사진 빼기로 키 사진이 빠져야 함");
+		assertTrue(afterRemove != null && afterRemove.base(), "사진 빼기 + 추가로 원래 사진 장면");
 
 		// 시간 막대 휠 확대: 0.4초 근처에서 세 번 굴리면 1.25³ 배 (보이는 구간 0.8초 → 약 0.41초)
 		runScript(settings[0], "var c = document.getElementById('tl-canvas'); var b = c.getBoundingClientRect();"
