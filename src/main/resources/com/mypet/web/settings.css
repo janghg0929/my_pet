@@ -22,7 +22,7 @@
   --shadow: 3px;
   --shadow-color: rgba(38, 34, 30, 0.3); /* 블록 그림자: 현실 그림자처럼 살짝 비치게 */
   --font: "DalseoHealing", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  --mono: Consolas, Menlo, "Courier New", monospace;
+  --mono: var(--font); /* 숫자 칸도 같은 글꼴 */
 }
 
 * {
@@ -34,7 +34,7 @@ html, body {
   background: var(--paper);
   color: var(--ink);
   font-family: var(--font);
-  font-size: 13px;
+  font-size: 15px;
   user-select: none;
   -webkit-user-select: none;
   overflow: hidden;
@@ -58,7 +58,7 @@ button {
 
 .titlebar h1 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -66,7 +66,7 @@ button {
   border: 0;
   background: none;
   color: var(--paper);
-  font-size: 14px;
+  font-size: 16px;
   padding: 0 4px 0 0;
 }
 
@@ -85,7 +85,7 @@ button {
   background: var(--paper);
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   outline: none;
   -webkit-user-select: text;
   user-select: text;
@@ -131,7 +131,7 @@ button {
 .subtitle {
   margin: 0 0 12px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 /* 각진 상자 + 블록 그림자 */
@@ -162,17 +162,17 @@ button {
 
 .menu-row:hover .menu-title::before {
   content: "▶ ";
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .menu-title {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
 }
 
 .menu-desc {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 /* 누르면 그림자 쪽으로 쑥 들어간다 */
@@ -246,7 +246,7 @@ button {
 .hex {
   font-family: var(--mono);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 /* ---------- 외형 설정 ---------- */
@@ -271,7 +271,7 @@ button {
 
 .option-head small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .segmented {
@@ -283,7 +283,7 @@ button {
 
 .seg {
   height: 28px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .seg:hover {
@@ -305,7 +305,7 @@ button {
 .hex {
   margin-top: 12px;
   color: var(--ink);
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
 }
 
@@ -331,7 +331,7 @@ button {
   top: 4px;
   right: 6px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   pointer-events: none;
 }
 
@@ -351,13 +351,13 @@ button {
   align-items: center;
   gap: 6px;
   margin-top: 8px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .tl-transport .btn-small {
   height: 26px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -382,7 +382,7 @@ button {
 }
 
 .part-fields.tl-fields {
-  grid-template-columns: repeat(5, 1fr) 46px;
+  grid-template-columns: repeat(5, 1fr) 60px;
   margin-top: 8px;
 }
 
@@ -406,7 +406,7 @@ button {
   border: var(--border) solid var(--ink);
   background: var(--box);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .parts-canvas {
@@ -458,7 +458,7 @@ button {
   flex: none;
   min-width: 52px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 13px;
   white-space: nowrap;
 }
 
@@ -466,7 +466,7 @@ button {
   flex: none;
   height: 28px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 13px;
   margin-bottom: 3px;
 }
 
@@ -478,7 +478,7 @@ button {
   padding: 4px 8px;
   background: var(--ink);
   color: var(--paper);
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
   box-shadow: 2px 2px 0 var(--shadow-color);
   pointer-events: none;
@@ -535,7 +535,7 @@ button {
 .paint-size {
   color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .paint-tools {
@@ -543,19 +543,19 @@ button {
   align-items: center;
   gap: 5px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .paint-tools .seg {
   height: 26px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .paint-tools .btn-small {
   height: 26px;
   padding: 0 8px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .paint-res {
@@ -573,7 +573,7 @@ button {
   border: var(--border) solid var(--ink);
   background: var(--box);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   -webkit-user-select: text;
   user-select: text;
 }
@@ -599,13 +599,13 @@ button {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .part-menu .menu-hint {
   margin: 6px 0 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .part-menu .menu-buttons {
@@ -616,7 +616,7 @@ button {
 .part-menu .btn-small {
   height: 26px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .paint-canvas {
@@ -646,7 +646,7 @@ button {
   height: 20px;
   padding: 0;
   border: 1px solid var(--ink);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
 }
 
@@ -670,7 +670,7 @@ button {
   border: var(--border) solid var(--ink);
   background: var(--box);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   -webkit-user-select: text;
   user-select: text;
 }
@@ -710,7 +710,7 @@ button {
 .add-title {
   margin: 12px 0 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .add-row {
@@ -734,13 +734,13 @@ button {
 
 .add-row .add-state {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .add-row .btn-small {
   height: 24px;
   padding: 0 8px;
-  font-size: 11px;
+  font-size: 13px;
   box-shadow: 2px 2px 0 var(--shadow-color);
 }
 
@@ -823,7 +823,7 @@ button {
   background: var(--box);
   color: var(--ink);
   font: inherit;
-  font-size: 12px;
+  font-size: 14px;
   outline: none;
 }
 
@@ -836,7 +836,7 @@ button {
 .anim-states .seg {
   height: 26px;
   padding: 0;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .motion-sliders {
@@ -852,7 +852,7 @@ button {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -874,7 +874,7 @@ button {
 
 .eye-tabs .seg {
   height: 24px;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .part-fields {
@@ -889,7 +889,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  font-size: 11px;
+  font-size: 13px;
   color: var(--muted);
 }
 
@@ -902,7 +902,7 @@ button {
   background: var(--box);
   color: var(--ink);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
   outline: none;
   -webkit-user-select: text;
   user-select: text;
@@ -935,7 +935,7 @@ input[type="number"] {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
 }
 
@@ -954,7 +954,7 @@ input[type="number"] {
   min-width: 0;
   height: 28px;
   padding: 0 10px;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .btn:disabled {
@@ -1029,7 +1029,7 @@ input[type="number"] {
   padding: 40px 0;
   text-align: center;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 /* ---------- 외형 목록 페이지 번호:  < 1 2 [3] 4 5 … > ---------- */
@@ -1048,7 +1048,7 @@ input[type="number"] {
   background: var(--box);
   box-shadow: 2px 2px 0 var(--shadow-color);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .page:hover:not(:disabled) {
@@ -1088,7 +1088,7 @@ input[type="number"] {
 .legend {
   margin: 12px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .legend + .status {
@@ -1099,7 +1099,7 @@ input[type="number"] {
 .status {
   margin: 14px 0 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 14px;
   min-height: 16px;
 }
 

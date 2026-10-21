@@ -82,7 +82,7 @@ public final class Ui {
 		Font font = appFont();
 		if (font != null) {
 			// 이름 입력 창 같은 기본 창도 달서힐링체로
-			UIManager.put("defaultFont", new javax.swing.plaf.FontUIResource(font.deriveFont(Font.PLAIN, 13f)));
+			UIManager.put("defaultFont", new javax.swing.plaf.FontUIResource(font.deriveFont(Font.PLAIN, 15f)));
 		}
 		try {
 			FlatLaf.setGlobalExtraDefaults(Map.of("@accentColor", "#0288d1"));
