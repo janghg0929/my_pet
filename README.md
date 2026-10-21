@@ -77,5 +77,6 @@ MY_PET 은 [GNU General Public License v3.0](LICENSE) 으로 배포해요.
 - [JNA](https://github.com/java-native-access/jna) – Apache 2.0 / LGPL 2.1
 - [FlatLaf](https://github.com/JFormDesigner/FlatLaf) – Apache 2.0
 - Java 실행 환경, JavaFX ([Liberica JDK](https://bell-sw.com/libericajdk/)) – GPL v2 + Classpath Exception (설치 폴더의 `runtime\legal` 에 원문)
+- 글꼴 [달서힐링체](https://dalseo.daegu.kr/index.do?menu_id=00003453) – 이 프로그램에는 대구광역시 달서구에서 2022년 작성하여 공공누리 제1유형으로 개방한 '달서힐링체'를 이용하였으며, 해당 저작물은 [달서구청 누리집](https://dalseo.daegu.kr/index.do?menu_id=00003453)에서 무료로 받을 수 있어요. 글꼴 파일은 고치지 않고 그대로 넣었어요 (GPL 이 아닌 원래 조건을 따라요).
 
 Copyright (C) 2026 janghg0929

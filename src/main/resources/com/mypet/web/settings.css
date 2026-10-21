@@ -2,6 +2,13 @@
   MY_PET 설정 창 디자인.
   --pet / --pet-light 는 비트의 현재 몸 색으로 settings.js 가 자동으로 넣어준다.
 */
+
+/* 글꼴: 달서힐링체 (앱에 들어 있어서 깔려 있지 않아도 보인다. 대구광역시 달서구, 공공누리 제1유형) */
+@font-face {
+  font-family: "DalseoHealing";
+  src: url("../fonts/DalseoHealingMedium.ttf") format("truetype");
+}
+
 :root {
   --paper: #fbf6ec;
   --ink: #26221e;
@@ -14,7 +21,7 @@
   --border: 2px;
   --shadow: 3px;
   --shadow-color: rgba(38, 34, 30, 0.3); /* 블록 그림자: 현실 그림자처럼 살짝 비치게 */
-  --font: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  --font: "DalseoHealing", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
   --mono: Consolas, Menlo, "Courier New", monospace;
 }
 

@@ -512,7 +512,7 @@
       ctx.fillStyle = "#e9e1d3";
       ctx.fillRect(labelW, y + ROW_H - 1, w - labelW, 1);
       ctx.fillStyle = part === self.selected ? "#26221e" : "#7d7468";
-      ctx.font = (part === self.selected ? "bold " : "") + "10px 'Malgun Gothic', sans-serif";
+      ctx.font = (part === self.selected ? "bold " : "") + "10px DalseoHealing, 'Malgun Gothic', sans-serif";
       var label = BV.partName(self.layout, part);
       while (label.length > 1 && ctx.measureText(label).width > labelW - 8) {
         label = label.slice(0, -1);

@@ -143,6 +143,14 @@ class WebSettingsPreviewTest {
 		File out = new File("build/preview");
 		assertTrue(out.isDirectory() || out.mkdirs());
 		snapshot(settings[0], new File(out, "web-main.png"));
+		// 글꼴: 앱에 든 달서힐링체 (깔려 있지 않아도). 글자 폭이 기본 글꼴과 다르면 그 글꼴로 그린 것
+		String fontCheck = evalScript(settings[0], "var c = document.createElement('canvas').getContext('2d'); var t = '비트 모습 꾸미기 abc 123';"
+			+ " c.font = '20px DalseoHealing, monospace'; var a = c.measureText(t).width; c.font = '20px monospace'; var b = c.measureText(t).width;"
+			+ " var s = document.createElement('span'); s.textContent = t; s.style.fontSize = '20px'; document.body.appendChild(s); var w1 = s.offsetWidth;"
+			+ " s.style.fontFamily = 'monospace'; var w2 = s.offsetWidth; document.body.removeChild(s); a + ' ' + b + ' | body ' + w1 + ' ' + w2");
+		System.out.println("font check (healing vs monospace): " + fontCheck);
+		String[] widths = fontCheck.split(" ");
+		assertTrue(!widths[0].equals(widths[1]) && !widths[4].equals(widths[5]), "달서힐링체가 쓰여야 함: " + fontCheck);
 		// 사용자가 창을 옮긴 것처럼 위치를 바꿔 두고, 화면을 바꿔도 그 자리를 지키는지 본다
 		java.awt.Point moved = new java.awt.Point(-3500, -3600);
 		SwingUtilities.invokeAndWait(() -> settings[0].dialog().setLocation(moved));

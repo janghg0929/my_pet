@@ -56,8 +56,34 @@ public final class Ui {
 	private Ui() {
 	}
 
+	/** 앱 글꼴: 달서힐링체 (앱 안에 들어 있다: 대구광역시 달서구, 공공누리 제1유형 출처표시). */
+	public static final String FONT_RESOURCE = "/com/mypet/fonts/DalseoHealingMedium.ttf";
+	private static Font appFont;
+	private static boolean appFontTried;
+
+	/** 앱에 들어 있는 달서힐링체 (못 읽으면 null). 한 번 읽어서 시스템 글꼴 목록에도 올린다. */
+	public static synchronized Font appFont() {
+		if (!appFontTried) {
+			appFontTried = true;
+			try (java.io.InputStream in = Ui.class.getResourceAsStream(FONT_RESOURCE)) {
+				if (in != null) {
+					appFont = Font.createFont(Font.TRUETYPE_FONT, in);
+					java.awt.GraphicsEnvironment.getLocalGraphicsEnvironment().registerFont(appFont);
+				}
+			} catch (java.awt.FontFormatException | java.io.IOException | RuntimeException e) {
+				appFont = null;
+			}
+		}
+		return appFont;
+	}
+
 	/** FlatLaf 테마 적용 (색 선택 창·알림 창 등 기본 창용). 실패하면 OS 기본 테마. */
 	public static void installTheme() {
+		Font font = appFont();
+		if (font != null) {
+			// 이름 입력 창 같은 기본 창도 달서힐링체로
+			UIManager.put("defaultFont", new javax.swing.plaf.FontUIResource(font.deriveFont(Font.PLAIN, 13f)));
+		}
 		try {
 			FlatLaf.setGlobalExtraDefaults(Map.of("@accentColor", "#0288d1"));
 			FlatLightLaf.setup();
@@ -88,7 +114,10 @@ public final class Ui {
 	}
 
 	public static Font font(int style, float size) {
-		Font base = UIManager.getFont("Label.font");
+		Font base = appFont();
+		if (base == null) {
+			base = UIManager.getFont("Label.font");
+		}
 		if (base == null) {
 			base = new Font(Font.DIALOG, Font.PLAIN, 12);
 		}

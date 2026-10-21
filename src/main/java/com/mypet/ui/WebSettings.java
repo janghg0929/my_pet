@@ -129,7 +129,7 @@ public final class WebSettings implements SettingsHost.View {
 	/** HTML 검색창 자리에 겹쳐 놓을 Swing 입력칸. 처음에는 숨겨 두고 JS 가 위치를 알려주면 보인다. */
 	private void setupSearchField() {
 		searchField.setVisible(false);
-		searchField.setFont(new Font("Malgun Gothic", Font.PLAIN, 12));
+		searchField.setFont(Ui.font(Font.PLAIN, 12));
 		searchField.setForeground(Ui.INK);
 		searchField.setBackground(Ui.PAPER);
 		searchField.setCaretColor(Ui.INK);
