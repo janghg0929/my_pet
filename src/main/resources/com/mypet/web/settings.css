@@ -336,6 +336,11 @@ button {
   padding: 0;
 }
 
+/* 사진 버튼은 오른쪽 끝으로 */
+.tl-photo {
+  margin-left: auto;
+}
+
 .tl-canvas {
   display: block;
   width: calc(100% - var(--shadow));

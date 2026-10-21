@@ -58,6 +58,13 @@
       self.commit(0);
     });
     document.getElementById("tl-delete").addEventListener("click", function () { self.deleteKeyAtPlayhead(); });
+    // 사진: 고른 부위에 넣기/빼기 (눈은 고른 상황의 표정 사진)
+    document.getElementById("tl-photo").addEventListener("click", function () {
+      self.send("pickPartImage", self.selected, self.timelineExpression());
+    });
+    document.getElementById("tl-photo-remove").addEventListener("click", function () {
+      self.send("removePartImage", self.selected, self.timelineExpression());
+    });
 
     FIELDS.forEach(function (field) {
       var input = document.getElementById("tl-" + field);
@@ -138,6 +145,16 @@
     this.tlCanvas.addEventListener("mousewheel", onWheel);
     document.addEventListener("mousemove", function (event) { self.timelineMouseMove(event); });
     document.addEventListener("mouseup", function () { self.timelineMouseUp(); });
+  };
+
+  /** 고른 상황의 눈 표정 (공중 = 떨어질 때, 잡힐 때 = 잡혔을 때, 나머지 = 평소). */
+  P.timelineExpression = function () {
+    return this.tl.state === "air" ? "fall" : (this.tl.state === "grab" ? "grab" : "neutral");
+  };
+
+  P.timelineHasImage = function () {
+    var part = this.part();
+    return this.selected === "eyes" ? !!(part.images && part.images[this.timelineExpression()]) : !!part.image;
   };
 
   /** 지금 고른 상황의 클립. */
@@ -312,6 +329,13 @@
       duration.value = (clip.duration / 1000).toFixed(1);
     }
     document.getElementById("tl-loop").checked = clip.loop;
+    var hasImage = this.timelineHasImage();
+    var photo = document.getElementById("tl-photo");
+    photo.textContent = hasImage ? "사진 바꾸기" : "사진 넣기";
+    photo.title = this.selected === "eyes"
+      ? "눈 사진 (" + { neutral: "평소", grab: "잡혔을 때", fall: "떨어질 때" }[this.timelineExpression()] + " 표정)"
+      : ROW_LABELS[this.selected] + " 사진";
+    document.getElementById("tl-photo-remove").disabled = !hasImage;
     var ease = document.getElementById("tl-ease");
     ease.checked = key ? key.ease : true;
     ease.disabled = !key;

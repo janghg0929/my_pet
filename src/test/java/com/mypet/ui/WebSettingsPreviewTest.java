@@ -355,6 +355,10 @@ class WebSettingsPreviewTest {
 			&& airClip.track("rightArm").get(1).rotation == -120, "고급 시간 막대 키");
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "고급 탭도 창 크기 그대로: " + settings[0].dialog().getHeight());
 		snapshot(settings[0], new File(out, "web-parts-advanced.png"));
+		System.out.println("advanced photo buttons: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / '"
+			+ " + document.getElementById('tl-photo-remove').disabled + ' / transport fits=' + (document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)"));
+		assertTrue(evalScript(settings[0], "String(document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)").equals("true"),
+			"고급 줄에 사진 버튼까지 한 줄에 들어가야 함");
 		// 시간 막대 휠 확대: 0.4초 근처에서 세 번 굴리면 1.25³ 배 (보이는 구간 0.8초 → 약 0.41초)
 		runScript(settings[0], "var c = document.getElementById('tl-canvas'); var b = c.getBoundingClientRect();"
 			+ " var x = b.left + 46 + (b.width - 54) * 0.5;"
