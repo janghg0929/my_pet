@@ -148,12 +148,15 @@
   };
 
   // (Java 가 부름) 부위 사진 도착
-  window.bitImage = function (name, dataUrl) {
+  window.bitImage = function (name, dataUrl, pixels) {
     if (!dataUrl) {
       return;
     }
     var image = new Image();
     image.pixelArt = /^px_/.test(name); // 도트 그림: 픽셀이 뭉개지지 않게, 몸 색 칸은 몸 색으로
+    if (image.pixelArt && pixels) {
+      window.BitView.setPixels(image, pixels); // 칸 색 그대로 (캔버스로 읽으면 이웃 색이 섞인다)
+    }
     image.onload = function () {
       drawIcons();
       drawLookIcons();

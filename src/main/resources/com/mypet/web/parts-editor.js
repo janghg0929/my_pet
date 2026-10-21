@@ -273,8 +273,9 @@
       image: image && image.complete && image.naturalWidth > 0 ? image : null,
       base: key === "eyes" ? "none" : (part.shape === "dot" ? "dot" : "rect"),
       bodyColor: this.getColor,
-      onSave: function (url, gridW, gridH) {
+      onSave: function (url, gridW, gridH, pixels) {
         pending.url = url;
+        pending.pixels = pixels;
         pending.gridW = gridW;
         pending.gridH = gridH;
         self.pendingDrawing = pending;
@@ -293,6 +294,7 @@
     // Java 에서 다시 받지 않아도 바로 보이게 그린 그림을 넣어 둔다
     var image = new Image();
     image.pixelArt = true;
+    image.pixels = pending.pixels; // 그린 칸 색 그대로 (캔버스로 다시 읽으면 흐려진다)
     image.src = pending.url;
     window.BitView.images[name] = image;
     var self = this;

@@ -40,6 +40,11 @@ public interface SettingsHost {
 	/** 부위 사진을 설정 화면에 보낼 data URL (없으면 null). */
 	String partImageDataUrl(String fileName);
 
+	/** 도트 그림의 픽셀 그대로 ("가로,세로,RGBA base64"), 도트 그림이 아니면 null. */
+	default String partImagePixels(String fileName) {
+		return null;
+	}
+
 	/** 저장한 모습: 지금 모습(배치·사진·몸 색)을 이름을 물어서 저장. */
 	void saveLook();
 

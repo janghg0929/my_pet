@@ -644,13 +644,8 @@
     if (image.tints[color]) {
       return image.tints[color];
     }
-    var c = document.createElement("canvas");
-    c.width = image.naturalWidth || image.width;
-    c.height = image.naturalHeight || image.height;
-    var g = c.getContext("2d");
-    g.drawImage(image, 0, 0);
-    var data = g.getImageData(0, 0, c.width, c.height);
-    var d = data.data;
+    var px = pixelsOf(image);
+    var d = new Uint8ClampedArray(px.data);
     var n = parseInt(color.slice(1), 16);
     var found = false;
     for (var i = 0; i < d.length; i += 4) {
@@ -664,8 +659,15 @@
     }
     var result = image;
     if (found) {
+      var c = document.createElement("canvas");
+      c.width = px.w;
+      c.height = px.h;
+      var g = c.getContext("2d");
+      var data = g.createImageData(px.w, px.h);
+      data.data.set(d);
       g.putImageData(data, 0, 0);
       c.pixelArt = true;
+      c.pixels = { w: px.w, h: px.h, data: d }; // 늘려 그릴 때 이 칸 색을 그대로 쓴다
       result = c;
     }
     image.tints[color] = result;
@@ -678,7 +680,25 @@
     ctx.webkitImageSmoothingEnabled = on;
   }
 
-  /** 그림의 픽셀 (RGBA). 한 번 읽으면 기억해 둔다. */
+  /** Java 가 보낸 도트 그림 픽셀 ("가로,세로,RGBA base64") 을 그림에 넣어 둔다. */
+  function setPixels(image, text) {
+    var parts = String(text).split(",");
+    var w = parseInt(parts[0], 10), h = parseInt(parts[1], 10);
+    var raw = atob(parts[2] || "");
+    if (!(w > 0 && h > 0) || raw.length !== w * h * 4) {
+      return;
+    }
+    var data = new Uint8ClampedArray(raw.length);
+    for (var i = 0; i < raw.length; i++) {
+      data[i] = raw.charCodeAt(i);
+    }
+    image.pixels = { w: w, h: h, data: data };
+  }
+
+  /**
+   * 그림의 픽셀 (RGBA). 한 번 읽으면 기억해 둔다. 도트 그림은 Java 나 그림판이 넣어 둔 칸 색을 쓴다
+   * (앱 안 웹 엔진은 그림을 캔버스로 읽으면 이웃 칸 색이 섞여서 흐려진다).
+   */
   function pixelsOf(image) {
     if (!image.pixels) {
       var w = image.naturalWidth || image.width, h = image.naturalHeight || image.height;
@@ -1127,6 +1147,7 @@
     setText: setText,
     setSmoothing: setSmoothing,
     pixelsOf: pixelsOf,
+    setPixels: setPixels,
     bounds: bounds,
     motionBounds: motionBounds,
     MotionClock: MotionClock,

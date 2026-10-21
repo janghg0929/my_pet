@@ -178,6 +178,31 @@ public final class PartImages {
 		}
 	}
 
+	/**
+	 * 도트 그림의 픽셀 그대로 ("가로,세로,RGBA base64"). 설정 화면의 웹 엔진은 그림을 캔버스로 읽으면
+	 * 이웃 칸 색이 조금씩 섞여서, 도트 그림은 이걸로 칸 색을 받는다. 도트 그림이 아니거나 못 읽으면 null.
+	 */
+	public String pixelData(String name) {
+		BufferedImage image = isPixelArt(name) ? get(name) : null;
+		if (image == null) {
+			return null;
+		}
+		int w = image.getWidth();
+		int h = image.getHeight();
+		byte[] rgba = new byte[w * h * 4];
+		int i = 0;
+		for (int y = 0; y < h; y++) {
+			for (int x = 0; x < w; x++) {
+				int argb = image.getRGB(x, y);
+				rgba[i++] = (byte) (argb >> 16);
+				rgba[i++] = (byte) (argb >> 8);
+				rgba[i++] = (byte) argb;
+				rgba[i++] = (byte) (argb >>> 24);
+			}
+		}
+		return w + "," + h + "," + Base64.getEncoder().encodeToString(rgba);
+	}
+
 	/** 쓰지 않는 사진 파일을 지운다. */
 	public synchronized void deleteUnused(Set<String> keep) {
 		if (!Files.isDirectory(dir)) {

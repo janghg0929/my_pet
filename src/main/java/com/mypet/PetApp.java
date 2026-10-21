@@ -919,6 +919,11 @@ final class PetApp implements SettingsHost {
 		return partImages.dataUrl(fileName);
 	}
 
+	@Override
+	public String partImagePixels(String fileName) {
+		return partImages.pixelData(fileName);
+	}
+
 	// ---------------------------------------------------------------- 저장한 모습 (SettingsHost)
 
 	/** 모습 이름 입력 창 (Swing 창이라 한글이 바로 입력된다). 취소하면 null. */

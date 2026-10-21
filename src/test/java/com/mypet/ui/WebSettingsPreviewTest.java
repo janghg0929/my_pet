@@ -322,6 +322,14 @@ class WebSettingsPreviewTest {
 		runScript(settings[0], "document.getElementById('paint-save').click()");
 		Thread.sleep(700);
 		snapshot(settings[0], new File(out, "web-parts-drawn.png"));
+		// 미리보기에서도 그린 색 그대로 (예전엔 웹 엔진이 그림을 읽을 때 이웃 칸 색이 섞여서 빨간 점이 흐릿한 보라색이 됐다)
+		String previewCells = evalScript(settings[0], "var ed = window.bitPartsEditor; var r = ed.partRect('body', ed.previewPose());"
+			+ " var g = document.getElementById('parts-canvas').getContext('2d'); var d = window.devicePixelRatio;"
+			+ " function at(cx, cy) { var p = g.getImageData(Math.floor((r.x + cx * r.w / 60) * d), Math.floor((r.y + cy * r.h / 28) * d), 1, 1).data;"
+			+ " return ((p[0] << 16) | (p[1] << 8) | p[2]).toString(16); }"
+			+ " at(5.5, 5.5) + ' ' + at(6.5, 5.5) + ' ' + at(6.5, 6.5)");
+		System.out.println("preview cells (red, right, diagonal): " + previewCells);
+		assertTrue(previewCells.equals("e53935 " + "4fc3f7 4fc3f7"), "미리보기의 그린 칸은 그 색 그대로: " + previewCells);
 		String bodyImage = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body().image;
 		java.awt.image.BufferedImage drawn = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
 			java.util.Base64.getDecoder().decode(drawnImage.get().substring(drawnImage.get().indexOf(',') + 1))));

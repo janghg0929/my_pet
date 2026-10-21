@@ -516,7 +516,7 @@ public final class WebSettings implements SettingsHost.View {
 			}
 		}
 
-		/** JS 가 아직 없는 부위 사진을 달라고 하면 data URL 을 window.bitImage(이름, url) 로 보낸다. */
+		/** JS 가 아직 없는 부위 사진을 달라고 하면 data URL (도트 그림은 픽셀도) 을 window.bitImage(이름, url, 픽셀) 로 보낸다. */
 		public void requestImage(Object fileName) {
 			if (fileName == null) {
 				return;
@@ -524,10 +524,11 @@ public final class WebSettings implements SettingsHost.View {
 			String name = String.valueOf(fileName);
 			SwingUtilities.invokeLater(() -> {
 				String url = host.partImageDataUrl(name);
+				String pixels = url == null ? null : host.partImagePixels(name);
 				Platform.runLater(() -> {
 					if (loaded) {
 						engine.executeScript("window.bitImage && window.bitImage(" + jsString(name) + ", "
-							+ (url == null ? "null" : jsString(url)) + ")");
+							+ (url == null ? "null" : jsString(url)) + ", " + (pixels == null ? "null" : jsString(pixels)) + ")");
 					}
 				});
 			});

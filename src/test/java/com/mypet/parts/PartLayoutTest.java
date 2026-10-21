@@ -181,6 +181,15 @@ class PartLayoutTest {
 		assertEquals(0xFF000000, blue.getRGB(0, 0));
 		assertEquals(0, blue.getRGB(2, 1) >>> 24); // 빈칸은 투명 그대로
 		assertEquals(0xFFF48FB1, images.tinted(name, "#f48fb1").getRGB(1, 0));
+		// 설정 화면에 보낼 칸 색 그대로: "가로,세로,RGBA"
+		String[] pixels = images.pixelData(name).split(",");
+		assertEquals("4", pixels[0]);
+		assertEquals("2", pixels[1]);
+		byte[] rgba = java.util.Base64.getDecoder().decode(pixels[2]);
+		assertEquals(4 * 2 * 4, rgba.length);
+		assertEquals(0xFF, rgba[3] & 0xFF); // 검은 칸
+		assertEquals(PartImages.BODY_ALPHA, rgba[7] & 0xFF); // 몸 색 칸
+		assertNull(images.pixelData("photo.png"));
 	}
 
 	@Test

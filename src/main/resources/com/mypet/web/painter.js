@@ -187,7 +187,7 @@
     var url = out.toDataURL("image/png");
     this.close();
     if (this.options && this.options.onSave) {
-      this.options.onSave(url, this.w, this.h);
+      this.options.onSave(url, this.w, this.h, { w: this.w, h: this.h, data: new Uint8ClampedArray(this.data) });
     }
   };
 
