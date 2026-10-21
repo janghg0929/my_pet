@@ -539,10 +539,11 @@ button {
   background-repeat: no-repeat;
 }
 
+/* 위쪽으로 뜬다 (맨 아래 줄에서 눌러도 목록 밑으로 가라앉지 않게) */
 .add-menu {
   position: absolute;
-  right: 4px;
-  top: 30px;
+  right: 34px;
+  bottom: 4px;
   z-index: 11;
   display: flex;
   flex-direction: column;

@@ -11,7 +11,9 @@
 
   var STATE_LABELS = { always: "항상", idle: "쉴 때", walk: "걸을 때", air: "공중", grab: "잡힐 때" };
 
-  var LABEL_W = 54, RULER_H = 16, ROW_H = 12, PAD_R = 8; // 줄 높이 12: 기본 부위 6줄이 한 번에 보이게
+  var RULER_H = 16, ROW_H = 12, PAD_R = 8; // 줄 높이 12: 기본 부위 6줄이 한 번에 보이게
+  // 부위 이름 칸 너비: 이름 칸과 시간 칸 사이 선을 끌어서 바꾼다
+  var labelW = 54, LABEL_MIN = 36, LABEL_MAX = 180, LABEL_GRAB = 4;
   var KEY_HIT = 6, MAX_KEYS = 60;
   var MIN_VIEW_MS = 100, TIME_ZOOM_STEP = 1.25; // 시간 막대를 가장 크게 확대하면 0.1초가 한 화면
   // 눈금 간격 후보 (ms): 확대할수록 촘촘한 눈금
@@ -133,6 +135,12 @@
     });
 
     this.tlCanvas.addEventListener("mousedown", function (event) { self.timelineMouseDown(event); });
+    this.tlCanvas.addEventListener("mousemove", function (event) {
+      if (!self.tl.drag) {
+        var p = self.timelinePointer(event);
+        self.tlCanvas.style.cursor = Math.abs(p.x - labelW) <= LABEL_GRAB ? "col-resize" : "pointer";
+      }
+    });
     this.tlCanvas.addEventListener("dblclick", function (event) { self.timelineDoubleClick(event); });
     // 휠: 마우스 자리 기준 확대/축소, Shift+휠(또는 옆으로 굴리기): 좌우로 옮기기, 눈금 두 번 누르기: 전체 보기
     // (앱 안의 웹 엔진은 wheel 과 예전 mousewheel 을 둘 다 보낼 수 있어서, wheel 을 받았으면 mousewheel 은 무시)
@@ -146,7 +154,7 @@
       event.preventDefault();
       var dy = event.type === "wheel" ? event.deltaY : -event.wheelDelta;
       var dx = event.type === "wheel" ? (event.deltaX || 0) : 0;
-      if (self.timelinePointer(event).x < LABEL_W) {
+      if (self.timelinePointer(event).x < labelW) {
         // 이름 칸: 줄 위아래로
         if (dy) {
           self.timelineScrollRows(dy > 0 ? 1 : -1);
@@ -401,13 +409,13 @@
 
   P.timeToX = function (t, width) {
     var v = this.timeView();
-    return LABEL_W + ((t - v.start) / v.span) * (width - LABEL_W - PAD_R);
+    return labelW + ((t - v.start) / v.span) * (width - labelW - PAD_R);
   };
 
   /** x 자리의 시간 (확대할수록 잘게 맞춘다). */
   P.xToTime = function (x, width) {
     var v = this.timeView();
-    var t = v.start + (x - LABEL_W) / (width - LABEL_W - PAD_R) * v.span;
+    var t = v.start + (x - labelW) / (width - labelW - PAD_R) * v.span;
     var snap = v.span < 400 ? 1 : (v.span < 2000 ? 5 : 10);
     return clamp(Math.round(t / snap) * snap, 0, this.clip().duration);
   };
@@ -416,8 +424,8 @@
   P.timelineZoom = function (p, factor) {
     var duration = this.clip().duration;
     var v = this.timeView();
-    var area = p.w - LABEL_W - PAD_R;
-    var anchor = v.start + clamp((p.x - LABEL_W) / area, 0, 1) * v.span;
+    var area = p.w - labelW - PAD_R;
+    var anchor = v.start + clamp((p.x - labelW) / area, 0, 1) * v.span;
     var span = clamp(v.span / factor, Math.min(MIN_VIEW_MS, duration), duration);
     this.tl.view = span >= duration ? null : { start: anchor - (anchor - v.start) * span / v.span, span: span };
     this.drawTimeline();
@@ -457,13 +465,13 @@
     ctx.scale(d, d);
     // 이름 칸
     ctx.fillStyle = "#f6f1e7";
-    ctx.fillRect(0, 0, LABEL_W, h);
+    ctx.fillRect(0, 0, labelW, h);
     // 시간 쪽은 보이는 구간만 그린다
     var view = this.timeView();
-    var pxPerMs = (w - LABEL_W - PAD_R) / view.span;
+    var pxPerMs = (w - labelW - PAD_R) / view.span;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(LABEL_W, 0, w - LABEL_W, h);
+    ctx.rect(labelW, 0, w - labelW, h);
     ctx.clip();
     // 눈금: 확대한 만큼 촘촘하게 (짧은 눈금은 6px, 숫자는 36px 이상 떨어지게)
     var minor = pickStep(TICK_STEPS, pxPerMs, 6);
@@ -484,9 +492,9 @@
     }
     // 확대했으면 전체 중 어디를 보고 있는지 눈금 아래에 막대로
     if (this.tl.view) {
-      var area = w - LABEL_W - PAD_R;
+      var area = w - labelW - PAD_R;
       ctx.fillStyle = "rgba(38, 34, 30, 0.35)";
-      ctx.fillRect(LABEL_W + view.start / clip.duration * area, RULER_H - 4, Math.max(4, view.span / clip.duration * area), 3);
+      ctx.fillRect(labelW + view.start / clip.duration * area, RULER_H - 4, Math.max(4, view.span / clip.duration * area), 3);
     }
     ctx.restore();
     ctx.fillStyle = "#26221e";
@@ -501,18 +509,18 @@
         ctx.fillRect(0, y, w, ROW_H);
       }
       ctx.fillStyle = "#e9e1d3";
-      ctx.fillRect(LABEL_W, y + ROW_H - 1, w - LABEL_W, 1);
+      ctx.fillRect(labelW, y + ROW_H - 1, w - labelW, 1);
       ctx.fillStyle = part === self.selected ? "#26221e" : "#7d7468";
       ctx.font = (part === self.selected ? "bold " : "") + "10px 'Malgun Gothic', sans-serif";
       var label = BV.partName(self.layout, part);
-      while (label.length > 1 && ctx.measureText(label).width > LABEL_W - 8) {
+      while (label.length > 1 && ctx.measureText(label).width > labelW - 8) {
         label = label.slice(0, -1);
       }
       ctx.fillText(label, 5, y + ROW_H - 3);
       // 키 사이를 선으로 이어서 움직이는 구간이 보이게 (시간 쪽 밖은 잘라낸다)
       ctx.save();
       ctx.beginPath();
-      ctx.rect(LABEL_W, y, w - LABEL_W, ROW_H);
+      ctx.rect(labelW, y, w - labelW, ROW_H);
       ctx.clip();
       var keys = clip.tracks[part] || [];
       var cy = y + ROW_H / 2;
@@ -549,16 +557,16 @@
       ctx.restore();
     });
     ctx.fillStyle = "#26221e";
-    ctx.fillRect(LABEL_W - 1, 0, 1, h);
+    ctx.fillRect(labelW - 1, 0, 2, h);
     if (maxOffset > 0) {
       ctx.fillStyle = "#7d7468";
       ctx.font = "8px sans-serif";
-      ctx.fillText(this.tl.rowOffset > 0 ? "▲" : "", LABEL_W - 9, RULER_H + 7);
-      ctx.fillText(this.tl.rowOffset < maxOffset ? "▼" : "", LABEL_W - 9, h - 2);
+      ctx.fillText(this.tl.rowOffset > 0 ? "▲" : "", labelW - 9, RULER_H + 7);
+      ctx.fillText(this.tl.rowOffset < maxOffset ? "▼" : "", labelW - 9, h - 2);
     }
     ctx.save();
     ctx.beginPath();
-    ctx.rect(LABEL_W, 0, w - LABEL_W, h);
+    ctx.rect(labelW, 0, w - labelW, h);
     ctx.clip();
     // 재생 위치
     var px = Math.round(this.timeToX(this.tl.playhead, w)) + 0.5;
@@ -607,6 +615,11 @@
     return this.pickerKeys();
   };
 
+  /** 부위 이름 칸 너비 (px). */
+  P.timelineLabelWidth = function () {
+    return labelW;
+  };
+
   P.timelineRowCount = function (height) {
     return Math.max(1, Math.floor((height - RULER_H) / ROW_H));
   };
@@ -622,11 +635,16 @@
     event.preventDefault();
     this.flush();
     var p = this.timelinePointer(event);
+    // 이름 칸과 시간 칸 사이 선: 끌어서 이름 칸 너비 바꾸기
+    if (Math.abs(p.x - labelW) <= LABEL_GRAB) {
+      this.tl.drag = { resizeLabel: true };
+      return;
+    }
     var part = this.rowAt(p.y);
     if (part && part !== this.selected) {
       this.select(part);
     }
-    if (p.x < LABEL_W) {
+    if (p.x < labelW) {
       return;
     }
     // 키를 눌렀으면 그 키로 가고, 끌어서 시간을 옮긴다
@@ -657,6 +675,11 @@
       return;
     }
     var p = this.timelinePointer(event);
+    if (drag.resizeLabel) {
+      labelW = clamp(Math.round(p.x), LABEL_MIN, Math.min(LABEL_MAX, p.w - 80));
+      this.drawTimeline();
+      return;
+    }
     var t = this.xToTime(p.x, p.w);
     if (drag.scrub) {
       this.tl.playhead = t;
@@ -696,7 +719,7 @@
       return;
     }
     var part = this.rowAt(p.y);
-    if (!part || p.x < LABEL_W) {
+    if (!part || p.x < labelW) {
       return;
     }
     this.tl.playhead = this.xToTime(p.x, p.w);

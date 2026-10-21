@@ -283,7 +283,16 @@ class WebSettingsPreviewTest {
 		String renamed = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).nameOf(tailKey);
 		String builtinDelete = evalScript(settings[0], "document.querySelectorAll('#parts-library .add-row')[0].querySelector('.add-more').click();"
 			+ " String(document.querySelectorAll('#parts-library .add-menu button')[1].disabled)");
+		String menuBelow = evalScript(settings[0], "document.querySelectorAll('#parts-library .add-row')[0].querySelector('.add-more').click();"
+			+ " var rows = document.querySelectorAll('#parts-library .add-row'); rows[rows.length - 1].querySelector('.add-more').click();"
+			+ " rows = document.querySelectorAll('#parts-library .add-row'); var last = rows[rows.length - 1];"
+			+ " var m = last.querySelector('.add-menu').getBoundingClientRect(); var r = last.getBoundingClientRect();"
+			+ " String(m.bottom <= r.bottom + 1 && m.top < r.top)");
 		snapshot(settings[0], new File(out, "web-parts-library.png"));
+		System.out.println("⋮ menu opens upward on last row: " + menuBelow);
+		assertTrue("true".equals(menuBelow), "⋮ 메뉴는 위로 떠야 함");
+		runScript(settings[0], "var rows = document.querySelectorAll('#parts-library .add-row'); rows[rows.length - 1].querySelector('.add-more').click();"
+			+ " document.querySelectorAll('#parts-library .add-row')[0].querySelector('.add-more').click();");
 		runScript(settings[0], "var rows = document.querySelectorAll('#parts-library .add-row'); rows[rows.length - 1].querySelector('.add-more').click();"
 			+ " var del = function () { return document.querySelectorAll('#parts-library .add-menu button')[1]; }; del().click(); del().click();"
 			+ " document.getElementById('parts-add-close').click();");
@@ -432,9 +441,29 @@ class WebSettingsPreviewTest {
 		System.out.println("after photo remove: " + afterRemove);
 		assertTrue(afterRemove == null, "사진 빼기로 키 사진이 빠져야 함");
 
+		// 이름 칸 너비: 사이 선을 진짜 마우스로 끌어서 54 → 90px
+		String divider = evalScript(settings[0], "var b = document.getElementById('tl-canvas').getBoundingClientRect();"
+			+ " Math.round(b.left + window.bitPartsEditor.timelineLabelWidth()) + ',' + Math.round(b.top + 50)");
+		String[] dxy = divider.split(",");
+		int dragFromX = Integer.parseInt(dxy[0]);
+		int dragY = Integer.parseInt(dxy[1]);
+		SwingUtilities.invokeAndWait(() -> {
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_PRESSED, System.currentTimeMillis(),
+				java.awt.event.InputEvent.BUTTON1_DOWN_MASK, dragFromX, dragY, 1, false, java.awt.event.MouseEvent.BUTTON1));
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_DRAGGED, System.currentTimeMillis(),
+				java.awt.event.InputEvent.BUTTON1_DOWN_MASK, dragFromX + 36, dragY, 0, false, java.awt.event.MouseEvent.NOBUTTON));
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(),
+				0, dragFromX + 36, dragY, 1, false, java.awt.event.MouseEvent.BUTTON1));
+		});
+		Thread.sleep(300);
+		String labelWidth = evalScript(settings[0], "String(window.bitPartsEditor.timelineLabelWidth())");
+		snapshot(settings[0], new File(out, "web-parts-label-wide.png"));
+		System.out.println("timeline name column dragged: 54 → " + labelWidth);
+		assertTrue("90".equals(labelWidth), "이름 칸 너비를 끌어서 바꾸기: " + labelWidth);
+
 		// 시간 막대 휠 확대: 0.4초 근처에서 세 번 굴리면 1.25³ 배 (보이는 구간 0.8초 → 약 0.41초)
 		runScript(settings[0], "var c = document.getElementById('tl-canvas'); var b = c.getBoundingClientRect();"
-			+ " var x = b.left + 46 + (b.width - 54) * 0.5;"
+			+ " var lw = window.bitPartsEditor.timelineLabelWidth(); var x = b.left + lw + (b.width - lw - 8) * 0.5;"
 			+ " for (var i = 0; i < 3; i++) { c.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: x, clientY: b.top + 40, bubbles: true, cancelable: true })); }");
 		Thread.sleep(200);
 		String zoomedView = evalScript(settings[0], "var v = window.bitPartsEditor.timeView(); Math.round(v.start) + '~' + Math.round(v.start + v.span)");
