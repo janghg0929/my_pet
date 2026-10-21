@@ -41,7 +41,138 @@
     PART_KEYS.forEach(function (key) {
       normalizePart(key, copy[key]);
     });
+    copy.timeline = normalizeTimeline(copy.timeline);
     return copy;
+  }
+
+  // ---------------------------------------------------------------- 고급: 시간 막대 (PartTimeline.java 와 같은 계산)
+
+  var CLIP_DEFAULT_MS = 1000, CLIP_MIN_MS = 100, CLIP_MAX_MS = 10000;
+
+  function emptyClip() {
+    return { duration: CLIP_DEFAULT_MS, loop: true, tracks: {} };
+  }
+
+  function newKey(t) {
+    return { t: t, dx: 0, dy: 0, rotation: 0, scaleX: 100, scaleY: 100, ease: true };
+  }
+
+  /** 상황마다 클립이 있고, 키는 시간 순으로. */
+  function normalizeTimeline(timeline) {
+    var result = {};
+    STATES.forEach(function (state) {
+      var c = (timeline && timeline[state]) || emptyClip();
+      var clip = {
+        duration: clamp(Math.round(c.duration || CLIP_DEFAULT_MS), CLIP_MIN_MS, CLIP_MAX_MS),
+        loop: c.loop !== false,
+        tracks: {}
+      };
+      PART_KEYS.forEach(function (key) {
+        var keys = (c.tracks && c.tracks[key]) || [];
+        if (keys.length) {
+          clip.tracks[key] = keys.map(function (k) {
+            var n = newKey(clamp(Math.round(k.t || 0), 0, clip.duration));
+            ["dx", "dy", "rotation", "scaleX", "scaleY"].forEach(function (f) {
+              if (typeof k[f] === "number") {
+                n[f] = Math.round(k[f]);
+              }
+            });
+            n.ease = k.ease !== false;
+            return n;
+          }).sort(function (a, b) { return a.t - b.t; });
+        }
+      });
+      result[state] = clip;
+    });
+    return result;
+  }
+
+  function mixKeys(a, b, u) {
+    var s = a.ease ? u * u * (3 - 2 * u) : u;
+    function mix(x, y) { return x + (y - x) * s; }
+    return {
+      dx: mix(a.dx, b.dx), dy: mix(a.dy, b.dy), rotation: mix(a.rotation, b.rotation),
+      scaleX: mix(a.scaleX, b.scaleX) / 100, scaleY: mix(a.scaleY, b.scaleY) / 100
+    };
+  }
+
+  /** 클립이 elapsedMs 만큼 지났을 때 부위의 모양 (키가 없으면 null) — PartTimeline.Clip.at. */
+  function clipAt(clip, part, elapsedMs) {
+    var keys = (clip && clip.tracks[part]) || [];
+    if (!keys.length) {
+      return null;
+    }
+    var d = clip.duration;
+    var t = clip.loop ? elapsedMs % d : Math.min(elapsedMs, d);
+    var first = keys[0], last = keys[keys.length - 1];
+    if (keys.length === 1) {
+      return mixKeys(first, first, 0);
+    }
+    if (t < first.t || t >= last.t) {
+      if (!clip.loop) {
+        return t < first.t ? mixKeys(first, first, 0) : mixKeys(last, last, 0);
+      }
+      var span = first.t + d - last.t;
+      var into = t >= last.t ? t - last.t : t + d - last.t;
+      return mixKeys(last, first, span <= 0 ? 0 : into / span);
+    }
+    for (var i = 0; i < keys.length - 1; i++) {
+      var a = keys[i], b = keys[i + 1];
+      if (t >= a.t && t < b.t) {
+        return mixKeys(a, b, b.t === a.t ? 0 : (t - a.t) / (b.t - a.t));
+      }
+    }
+    return mixKeys(last, last, 0);
+  }
+
+  /** 상황별 켜짐 정도·지난 시간으로 섞은 시간 막대 모양 (PartTimeline.transform). */
+  function timelineTransform(timeline, part, weights, elapsed) {
+    var t = { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+    if (!timeline) {
+      return t;
+    }
+    STATES.forEach(function (state) {
+      var weight = state === "always" ? 1 : (weights[state] || 0);
+      if (weight <= 0) {
+        return;
+      }
+      var c = clipAt(timeline[state], part, elapsed[state] || 0);
+      if (!c) {
+        return;
+      }
+      t.dx += c.dx * weight;
+      t.dy += c.dy * weight;
+      t.rotation += c.rotation * weight;
+      t.scaleX *= 1 + (c.scaleX - 1) * weight;
+      t.scaleY *= 1 + (c.scaleY - 1) * weight;
+    });
+    return t;
+  }
+
+  /** 두 모양 더하기 (옮기기·돌리기는 더하고 크기는 곱한다: PartTimeline.combine). */
+  function combineTransforms(a, b) {
+    return {
+      dx: a.dx + b.dx, dy: a.dy + b.dy, rotation: a.rotation + b.rotation,
+      scaleX: a.scaleX * b.scaleX, scaleY: a.scaleY * b.scaleY
+    };
+  }
+
+  /** 시간 막대가 가장 크게 움직이는 값 (PartTimeline.reach). */
+  function clipReach(timeline, part, always) {
+    var most = [0, 0, 0, 0, 1];
+    STATES.forEach(function (state) {
+      if ((state === "always") !== always || !timeline) {
+        return;
+      }
+      ((timeline[state] && timeline[state].tracks[part]) || []).forEach(function (k) {
+        most[0] = Math.max(most[0], Math.abs(k.rotation));
+        most[1] = Math.max(most[1], Math.abs(k.dx));
+        most[2] = Math.max(most[2], Math.max(0, -k.dy));
+        most[3] = Math.max(most[3], Math.max(0, k.dy));
+        most[4] = Math.max(most[4], Math.max(k.scaleX, k.scaleY) / 100);
+      });
+    });
+    return most;
   }
 
   // ---------------------------------------------------------------- 부위 애니메이션 (PartAnimation.java, PartMotion.java 와 같은 계산)
@@ -208,6 +339,7 @@
   function MotionClock() {
     this.ticks = 0;
     this.weights = {};
+    this.elapsed = {}; // 상황 → 켜진 뒤 지난 시간 (ms)
   }
 
   MotionClock.prototype.tick = function (state) {
@@ -225,10 +357,15 @@
       }
       self.weights[s] = w;
     });
+    var tickMs = 1000 / MOTION_TICKS_PER_SECOND;
+    STATES.forEach(function (s) {
+      self.elapsed[s] = s === "always" ? self.ticks * tickMs : ((self.weights[s] || 0) > 0 ? (self.elapsed[s] || 0) + tickMs : 0);
+    });
   };
 
   MotionClock.prototype.transform = function (layout, key) {
-    return partTransform(layout[key], this.ticks, this.weights);
+    return combineTransforms(partTransform(layout[key], this.ticks, this.weights),
+      timelineTransform(layout.timeline, key, this.weights, this.elapsed));
   };
 
   function newPose() {
@@ -279,7 +416,11 @@
     var b = bounds(layout, withRaise);
     PART_KEYS.forEach(function (key) {
       var part = layout[key];
-      if (!partAnimated(part)) {
+      var clipAlways = clipReach(layout.timeline, key, true);
+      var clipMost = clipReach(layout.timeline, key, false);
+      var clipped = clipAlways[0] + clipAlways[1] + clipAlways[2] + clipAlways[3] > 0 || clipAlways[4] !== 1
+        || clipMost[0] + clipMost[1] + clipMost[2] + clipMost[3] > 0 || clipMost[4] !== 1;
+      if (!partAnimated(part) && !clipped) {
         return;
       }
       var always = reach(part.animations.always, false);
@@ -293,6 +434,12 @@
           most[i] = Math.max(most[i], r[i]);
         }
       });
+      for (var j = 0; j < 4; j++) {
+        always[j] += clipAlways[j];
+        most[j] += clipMost[j];
+      }
+      always[4] *= clipAlways[4];
+      most[4] *= clipMost[4];
       var turn = always[0] + most[0], side = always[1] + most[1], up = always[2] + most[2], down = always[3] + most[3];
       var scale = always[4] * most[4];
       var pivot = pivotPoint(part);
@@ -730,6 +877,12 @@
     mirroredPivot: mirroredPivot,
     pivotPoint: pivotPoint,
     partTransform: partTransform,
+    motionTransform: motionTransform,
+    clipAt: clipAt,
+    timelineTransform: timelineTransform,
+    newKey: newKey,
+    combineTransforms: combineTransforms,
+    NO_MOTION: NO_MOTION,
     prepare: prepare,
     newPose: newPose,
     drawBitAt: drawBitAt,

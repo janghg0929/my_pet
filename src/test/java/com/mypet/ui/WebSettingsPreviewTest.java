@@ -330,6 +330,36 @@ class WebSettingsPreviewTest {
 		String frameB = evalScript(settings[0], "document.getElementById('parts-canvas').toDataURL()");
 		assertTrue(!frameA.equals(frameB), "편집 화면 미리보기가 움직여야 함");
 
+		// 고급(시간 막대): "공중"에서 왼팔 0초 0도 → 0.4초 120도 (좌우 맞추기로 오른팔은 -120도)
+		runScript(settings[0], "document.querySelector('#parts-level [data-level=advanced]').click();"
+			+ " document.querySelector('#parts-tabs [data-part=leftArm]').click();"
+			+ " document.querySelector('#tl-states [data-key=air]').click();"
+			+ " var ed = window.bitPartsEditor; ed.tl.playhead = 0; ed.refreshControls(); document.getElementById('tl-add').click();"
+			+ " ed.tl.playhead = 400; ed.refreshControls();"
+			+ " var r = document.getElementById('tl-rotation'); r.value = '120'; r.dispatchEvent(new Event('input'));"
+			+ " document.getElementById('tl-duration').value = '0.8'; document.getElementById('tl-duration').dispatchEvent(new Event('change'));"
+			+ " document.getElementById('tl-loop').click();"
+			+ " ed.tl.playhead = 200; ed.refreshControls(); ed.draw();");
+		Thread.sleep(700);
+		com.mypet.parts.PartLayout timed = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		com.mypet.parts.PartTimeline.Clip airClip = timed.timeline.clips.get("air");
+		System.out.println("timeline sent: air duration=" + airClip.duration + " loop=" + airClip.loop
+			+ " left=" + airClip.track("leftArm").size() + " keys, right last=" + airClip.track("rightArm").get(1).rotation
+			+ " | middle shows " + evalScript(settings[0], "document.getElementById('tl-rotation').value")
+			+ " | " + edges(settings[0].dialog()));
+		assertTrue(airClip.duration == 800 && !airClip.loop && airClip.track("leftArm").size() == 2
+			&& airClip.track("rightArm").get(1).rotation == -120, "고급 시간 막대 키");
+		assertTrue(settings[0].dialog().getHeight() == partsHeight, "고급 탭도 창 크기 그대로: " + settings[0].dialog().getHeight());
+		snapshot(settings[0], new File(out, "web-parts-advanced.png"));
+		// 재생하면 재생 위치가 움직이고, 반복이 아니니 끝에서 멈춘다
+		runScript(settings[0], "document.getElementById('tl-play').click()");
+		Thread.sleep(1200);
+		System.out.println("after play: playhead=" + evalScript(settings[0], "String(window.bitPartsEditor.tl.playhead)")
+			+ " playing=" + evalScript(settings[0], "String(window.bitPartsEditor.tl.playing)"));
+		assertTrue("800".equals(evalScript(settings[0], "String(window.bitPartsEditor.tl.playhead)")), "끝에서 멈춤");
+		runScript(settings[0], "document.querySelector('#parts-level [data-level=basic]').click()");
+		Thread.sleep(200);
+
 		// 저장한 모습: 예시 모습 7개(2쪽)를 넣어 보고, 뒤로가기가 모습 꾸미기로 가는지 본다
 		runScript(settings[0], "var s = " + STATE + "; s.looks = [];"
 			+ " for (var i = 1; i <= 7; i++) { s.looks.push({ id: 'l' + i, name: '모습 ' + i + (i == 2 ? ' 이름이 아주 긴 모습' : ''),"

@@ -142,6 +142,8 @@ public final class PartLayout {
 	private final Map<String, Part> parts = new LinkedHashMap<>();
 	/** 좌우 맞추기: 왼쪽을 바꾸면 오른쪽도 거울처럼 따라간다. */
 	public boolean symmetric = true;
+	/** 고급: 상황별 시간 막대 애니메이션 (키프레임). */
+	public PartTimeline timeline = new PartTimeline();
 
 	private PartLayout() {
 	}
@@ -164,6 +166,7 @@ public final class PartLayout {
 	public PartLayout copy() {
 		PartLayout copy = new PartLayout();
 		copy.symmetric = symmetric;
+		copy.timeline = timeline.copy();
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			copy.parts.put(entry.getKey(), entry.getValue().copy());
 		}
@@ -230,6 +233,7 @@ public final class PartLayout {
 		for (Map.Entry<String, PartAnimation> entry : source.animations.entrySet()) {
 			target.animations.put(entry.getKey(), entry.getValue().mirrored());
 		}
+		timeline.mirrorTrack(sourceKey, targetKey);
 	}
 
 	static String mirrorPivot(String pivot) {
@@ -287,10 +291,15 @@ public final class PartLayout {
 		double maxY = base.maxY();
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
-			if (!part.animated()) {
+			double[] clipAlways = timeline.reach(entry.getKey(), true);
+			double[] clipMost = timeline.reach(entry.getKey(), false);
+			boolean clipped = clipAlways[0] + clipAlways[1] + clipAlways[2] + clipAlways[3] > 0 || clipAlways[4] != 1
+				|| clipMost[0] + clipMost[1] + clipMost[2] + clipMost[3] > 0 || clipMost[4] != 1;
+			if (!part.animated() && !clipped) {
 				continue;
 			}
-			// 가장 크게 움직일 때: "항상" + (다른 상황 중 가장 큰 것) — 한 번에 한 상황만 켜진다
+			// 가장 크게 움직일 때: "항상" + (다른 상황 중 가장 큰 것) — 한 번에 한 상황만 켜진다.
+			// 고급 시간 막대는 일반 애니메이션에 더해진다
 			double[] always = reach(part.animations.get(PartAnimation.ALWAYS), false);
 			double[] most = {0, 0, 0, 0, 1};
 			for (String state : PartAnimation.STATES) {
@@ -302,6 +311,12 @@ public final class PartLayout {
 					most[4] = Math.max(most[4], r[4]);
 				}
 			}
+			for (int i = 0; i < 4; i++) {
+				always[i] += clipAlways[i];
+				most[i] += clipMost[i];
+			}
+			always[4] *= clipAlways[4];
+			most[4] *= clipMost[4];
 			double turn = always[0] + most[0];
 			double side = always[1] + most[1];
 			double up = always[2] + most[2];
@@ -375,6 +390,7 @@ public final class PartLayout {
 	public Map<String, Object> toJson() {
 		Map<String, Object> root = new LinkedHashMap<>();
 		root.put("symmetric", symmetric);
+		root.put("timeline", timeline.toJson());
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
 			Map<String, Object> item = new LinkedHashMap<>();
@@ -413,6 +429,7 @@ public final class PartLayout {
 		if (root.get("symmetric") instanceof Boolean flag) {
 			layout.symmetric = flag;
 		}
+		layout.timeline = PartTimeline.fromJson(root.get("timeline"));
 		for (String key : KEYS) {
 			if (!(root.get(key) instanceof Map<?, ?> item)) {
 				continue;

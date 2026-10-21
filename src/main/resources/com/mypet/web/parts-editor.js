@@ -71,6 +71,7 @@
     this.view = null; // { k, ox, oy, w, h } (화면 px)
     this.commitTimer = null;
     this.resetArmed = false;
+    this.level = "basic"; // basic = 일반, advanced = 고급(시간 막대: timeline-editor.js)
     this.mode = "shape"; // shape = 모양·사진, motion = 움직임
     this.animState = "always"; // 움직임에서 고른 상황
     this.clock = new window.BitView.MotionClock();
@@ -85,6 +86,9 @@
     this.zoomed = false;
     this.build();
     this.buildMotion();
+    if (this.initTimeline) {
+      this.initTimeline();
+    }
   }
 
   // ---------------------------------------------------------------- 화면 구성
@@ -166,7 +170,13 @@
     });
     // Ctrl+Z 되돌리기, Ctrl+Y / Ctrl+Shift+Z 다시 하기 (모습 꾸미기 화면에서만)
     document.addEventListener("keydown", function (event) {
-      if (!self.visible || !(event.ctrlKey || event.metaKey)) {
+      if (!self.visible) {
+        return;
+      }
+      if (!(event.ctrlKey || event.metaKey)) {
+        if (self.advanced() && self.timelineKey) {
+          self.timelineKey(event);
+        }
         return;
       }
       var key = (event.key || "").toLowerCase();
@@ -291,6 +301,15 @@
 
   PartsEditor.prototype.buildMotion = function () {
     var self = this;
+    Array.prototype.forEach.call(document.querySelectorAll("#parts-level .seg"), function (button) {
+      button.addEventListener("click", function () {
+        self.flush();
+        self.level = button.getAttribute("data-level");
+        self.refreshControls();
+        self.draw();
+        self.updateAnimation();
+      });
+    });
     Array.prototype.forEach.call(document.querySelectorAll("#parts-mode .seg"), function (button) {
       button.addEventListener("click", function () {
         self.mode = button.getAttribute("data-mode");
@@ -362,9 +381,24 @@
     return this.part().animations[this.animState];
   };
 
-  /** 자세를 잡는 중인지 (움직임 화면에서 "항상"이 아닌 상황을 골랐을 때). */
+  /** 고급(시간 막대) 탭인지. */
+  PartsEditor.prototype.advanced = function () {
+    return this.level === "advanced";
+  };
+
+  /** 일반 → 모양·사진 화면인지. */
+  PartsEditor.prototype.shaping = function () {
+    return !this.advanced() && this.mode === "shape";
+  };
+
+  /** 자세를 잡는 중인지 (일반 → 움직임 화면에서 "항상"이 아닌 상황을 골랐을 때). */
   PartsEditor.prototype.posing = function () {
-    return this.mode === "motion" && this.animState !== "always";
+    return !this.advanced() && this.mode === "motion" && this.animState !== "always";
+  };
+
+  /** 미리보기에서 부위를 끌거나 돌릴 수 있는지. */
+  PartsEditor.prototype.editable = function () {
+    return this.shaping() || this.posing() || this.advanced();
   };
 
   PartsEditor.prototype.changeMotion = function (change) {
@@ -387,6 +421,12 @@
   PartsEditor.prototype.refreshMotionControls = function () {
     var self = this;
     var shape = this.mode === "shape";
+    var advanced = this.advanced();
+    setOff("parts-basic", advanced);
+    setOff("parts-advanced", !advanced);
+    Array.prototype.forEach.call(document.querySelectorAll("#parts-level .seg"), function (button) {
+      button.classList.toggle("selected", button.getAttribute("data-level") === self.level);
+    });
     setOff("parts-shape", !shape);
     setOff("parts-motion", shape);
     Array.prototype.forEach.call(document.querySelectorAll("#parts-mode .seg"), function (button) {
@@ -435,7 +475,9 @@
     document.getElementById("motion-alternate").checked = !!m.alternate;
 
     var subtitle = document.getElementById("parts-subtitle");
-    if (shape) {
+    if (advanced) {
+      subtitle.textContent = "시간을 고르고 부위를 끌거나 돌리면 ◆ 키가 생겨요";
+    } else if (shape) {
       subtitle.textContent = "끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전";
     } else if (always) {
       subtitle.textContent = "언제나 하는 움직임 · 자세는 다른 상황에서 잡아요";
@@ -452,7 +494,8 @@
 
   PartsEditor.prototype.updateAnimation = function () {
     var self = this;
-    var should = this.visible && this.mode === "motion";
+    // 일반 → 움직임: 늘 움직인다. 고급: 재생 중에만
+    var should = this.visible && (this.advanced() ? !!(this.tl && this.tl.playing) : this.mode === "motion");
     if (!should || this.animating) {
       if (!should) {
         this.animating = false;
@@ -470,8 +513,15 @@
       if (last === null) {
         last = time;
       }
+      var dt = Math.min(time - last, TICK_MS * 4);
       acc = Math.min(acc + (time - last), TICK_MS * 4);
       last = time;
+      if (self.advanced()) {
+        self.timelineAdvance(dt);
+        self.draw();
+        window.requestAnimationFrame(frame);
+        return;
+      }
       while (acc >= TICK_MS) {
         // 고른 상황의 자세와 움직임을 보여준다 (상황을 바꾸면 비트처럼 서서히 바뀐다)
         self.clock.tick(self.animState);
@@ -524,6 +574,9 @@
     // 표정 사진 줄은 눈을 골랐을 때만 (자리는 늘 있다)
     setOff("parts-eye-tabs", this.selected !== "eyes");
     this.refreshMotionControls();
+    if (this.advanced() && this.refreshTimelineControls) {
+      this.refreshTimelineControls();
+    }
     var exprButtons = eyeTabs.querySelectorAll(".seg");
     for (var j = 0; j < exprButtons.length; j++) {
       exprButtons[j].classList.toggle("selected", exprButtons[j].getAttribute("data-expr") === this.expression);
@@ -570,6 +623,22 @@
     t.animations = {};
     window.BitView.STATES.forEach(function (state) {
       t.animations[state] = window.BitView.mirroredAnimation(s.animations[state]);
+    });
+    // 고급 시간 막대 줄도 거울처럼 (PartTimeline.mirrorTrack)
+    var timeline = this.layout.timeline;
+    window.BitView.STATES.forEach(function (state) {
+      var clip = timeline && timeline[state];
+      if (!clip) {
+        return;
+      }
+      var keys = clip.tracks[sourceKey];
+      if (keys && keys.length) {
+        clip.tracks[targetKey] = keys.map(function (k) {
+          return { t: k.t, dx: -k.dx, dy: k.dy, rotation: -k.rotation, scaleX: k.scaleX, scaleY: k.scaleY, ease: k.ease };
+        });
+      } else {
+        delete clip.tracks[targetKey];
+      }
     });
   };
 
@@ -645,6 +714,9 @@
 
   /** 미리보기 자세: 움직임 화면이면 고른 상황의 표정(공중 = 떨어질 때 눈 + 팔 들기), 아니면 눈 표정 탭. */
   PartsEditor.prototype.previewPose = function () {
+    if (this.advanced()) {
+      return this.timelinePose();
+    }
     var pose = window.BitView.newPose();
     if (this.mode === "motion") {
       pose.expression = this.animState === "air" ? "fall" : (this.animState === "grab" ? "grab" : "neutral");
@@ -686,6 +758,9 @@
 
     var pose = this.previewPose();
     window.BitView.drawBitAt(ctx, v.ox * d, v.oy * d, v.k * d, this.getColor(), pose, this.layout);
+    if (this.advanced()) {
+      this.drawTimeline();
+    }
 
     // 고른 부위 표시: 점선 테두리 + 크기 조절 손잡이(모양 화면만) + 회전 손잡이, 부위와 같이 돌린다.
     // 움직임 "항상"에서는 손잡이 없이 테두리만 (자세를 잡지 않으니까)
@@ -700,12 +775,12 @@
     ctx.strokeRect(Math.round((r.x - 2) * d) + 0.5, Math.round((r.y - 2) * d) + 0.5, Math.round((r.w + 4) * d), Math.round((r.h + 4) * d));
     ctx.setLineDash([]);
     ctx.fillStyle = "#ffffff";
-    if (this.mode === "shape") {
+    if (this.shaping() || this.advanced()) {
       var hr = this.handleRect(r);
       ctx.fillRect(Math.round(hr.x * d), Math.round(hr.y * d), Math.round(hr.w * d), Math.round(hr.h * d));
       ctx.strokeRect(Math.round(hr.x * d) + 0.5, Math.round(hr.y * d) + 0.5, Math.round(hr.w * d), Math.round(hr.h * d));
     }
-    if (this.mode === "shape" || this.posing()) {
+    if (this.editable()) {
       var knob = this.rotateKnob(r);
       ctx.beginPath();
       ctx.moveTo(knob.x * d, (r.y - 2) * d);
@@ -718,7 +793,7 @@
     }
     ctx.restore();
     // 자세를 잡을 때는 중심점(돌리는 기준)을 표시한다
-    if (this.posing()) {
+    if (this.posing() || this.advanced()) {
       ctx.save();
       ctx.fillStyle = "#c8402f";
       ctx.beginPath();
@@ -730,7 +805,7 @@
 
   /**
    * 부위의 캔버스 위 사각형 (화면 px, 돌리기 전). cx, cy = 가운데, angle = 회전(라디안), px, py = 중심점.
-   * 자세를 잡는 중이면 그 상황의 자세(옮기기 + 중심점 기준 돌리기)를 넣은 자리.
+   * 자세를 잡는 중이면 그 상황의 자세, 고급이면 지금 시간의 모양(옮기기 + 중심점 기준 돌리기·늘이기)을 넣은 자리.
    */
   PartsEditor.prototype.partRect = function (key, pose) {
     var v = this.view;
@@ -743,11 +818,21 @@
     var pivot = window.BitView.pivotPoint(part);
     r.px = v.ox + pivot.x * v.k;
     r.py = v.oy + (pivot.y + lift) * v.k;
+    var t = null;
     if (this.posing()) {
       var a = part.animations[this.animState];
-      var turn = (a.rotation || 0) * Math.PI / 180;
-      var center = rotatePoint(r.cx, r.cy, r.px, r.py, turn);
-      var dx = (a.dx || 0) * v.k, dy = (a.dy || 0) * v.k;
+      t = { dx: a.dx || 0, dy: a.dy || 0, rotation: a.rotation || 0, scaleX: 1, scaleY: 1 };
+    } else if (this.advanced()) {
+      t = this.timelineTransformAt(key);
+    }
+    if (t) {
+      var turn = t.rotation * Math.PI / 180;
+      // 중심점 기준으로 늘이고 돌린 다음 옮긴다 (bit.js applyPartTransform 과 같은 순서)
+      var scaled = { x: r.px + (r.cx - r.px) * t.scaleX, y: r.py + (r.cy - r.py) * t.scaleY };
+      var center = rotatePoint(scaled.x, scaled.y, r.px, r.py, turn);
+      var dx = t.dx * v.k, dy = t.dy * v.k;
+      r.w *= t.scaleX;
+      r.h *= t.scaleY;
       r.cx = center.x + dx;
       r.cy = center.y + dy;
       r.x = r.cx - r.w / 2;
@@ -791,14 +876,14 @@
     var pose = this.previewPose();
     var selected = this.partRect(this.selected, pose);
     var q = toLocal(selected, x, y);
-    if (this.mode === "shape" || this.posing()) {
+    if (this.editable()) {
       var knob = this.rotateKnob(selected);
       var grab = ROTATE_RADIUS + 3;
       if (pointIn({ x: knob.x - grab, y: knob.y - grab, w: grab * 2, h: grab * 2 }, q.x, q.y)) {
         return { key: this.selected, rotate: true };
       }
     }
-    if (this.mode === "shape" && pointIn(this.handleRect(selected), q.x, q.y)) {
+    if ((this.shaping() || this.advanced()) && pointIn(this.handleRect(selected), q.x, q.y)) {
       return { key: this.selected, resize: true };
     }
     for (var i = 0; i < HIT_ORDER.length; i++) {
@@ -818,7 +903,7 @@
     }
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
-    var movable = this.mode === "shape" || this.posing();
+    var movable = this.editable();
     this.canvas.style.cursor = !target ? "grab"
       : (target.rotate ? "grab" : (target.resize ? "nwse-resize" : (movable ? "move" : "pointer")));
   };
@@ -836,7 +921,11 @@
     if (target.key !== this.selected) {
       this.select(target.key);
     }
-    if (this.mode !== "shape" && !this.posing()) {
+    if (this.advanced()) {
+      this.timelineStartDrag(target, p);
+      return;
+    }
+    if (!this.editable()) {
       return; // 움직임 "항상": 누르면 고르기만
     }
     var part = this.part();
@@ -864,6 +953,10 @@
       this.view.oy = drag.oy + (p.y - drag.startY);
       this.zoomed = true;
       this.draw();
+      return;
+    }
+    if (drag.timeline) {
+      this.timelineDragMove(p);
       return;
     }
     var k = this.view.k;

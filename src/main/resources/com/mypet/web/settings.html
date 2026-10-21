@@ -54,13 +54,21 @@
     <p class="status" id="appearance-status"></p>
   </main>
 
-  <!-- 모습 꾸미기 (parts-editor.js) -->
+  <!-- 모습 꾸미기 (parts-editor.js, 고급 = timeline-editor.js) -->
   <main class="view" data-view="parts" hidden>
-    <p class="subtitle" id="parts-subtitle">끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전</p>
+    <!-- [일반] 모양·사진·움직임 / [고급] 영상 편집처럼 시간 막대에 키프레임 -->
+    <div class="part-tabs level-tabs" id="parts-level">
+      <button class="seg selected" data-level="basic">일반</button>
+      <button class="seg" data-level="advanced">고급 · 시간 막대</button>
+    </div>
     <section class="box parts-stage">
       <canvas id="parts-canvas" class="parts-canvas" aria-label="비트 모습 편집"></canvas>
+      <span class="stage-hint" id="parts-subtitle">끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전</span>
     </section>
     <div class="part-tabs part-picker" id="parts-tabs"></div>
+    <!-- 일반과 고급을 같은 자리에 겹쳐 둔다 (창 크기 그대로) -->
+    <div class="parts-panels">
+    <div id="parts-basic">
     <!-- 고른 부위의 [모양·사진] 또는 [움직임] 을 바꾼다 -->
     <div class="part-tabs mode-tabs" id="parts-mode">
       <button class="seg selected" data-mode="shape">모양·사진</button>
@@ -98,6 +106,28 @@
           <label>빠르기 <b id="motion-speed-value">5</b><input id="motion-speed" type="range" min="1" max="10" step="1"></label>
         </div>
         <label class="check" id="motion-alternate-row"><input type="checkbox" id="motion-alternate"> 반대쪽은 엇갈리게</label>
+      </div>
+    </div>
+    </div>
+    </div>
+    <!-- 고급: 상황마다 시간 막대 하나, 부위마다 키프레임(◆) 줄 -->
+    <div id="parts-advanced" class="off">
+      <div class="part-tabs anim-states" id="tl-states"></div>
+      <div class="tl-transport">
+        <button class="btn btn-small" id="tl-play" title="재생 / 멈춤 (스페이스)">▶</button>
+        <button class="btn btn-small" id="tl-add" title="지금 시간에 키 넣기 (줄 두 번 누르기)">◆ 넣기</button>
+        <button class="btn btn-small btn-danger" id="tl-delete" title="지금 시간의 키 빼기 (Delete)">◆ 빼기</button>
+        <label class="tl-length">길이 <input id="tl-duration" type="number" step="0.1" min="0.1" max="10">초</label>
+        <label class="check"><input type="checkbox" id="tl-loop"> 반복</label>
+      </div>
+      <canvas id="tl-canvas" class="tl-canvas" aria-label="시간 막대"></canvas>
+      <div class="part-fields tl-fields">
+        <label>X 이동 <input id="tl-dx" type="number" step="1"></label>
+        <label>Y 이동 <input id="tl-dy" type="number" step="1"></label>
+        <label>회전 <input id="tl-rotation" type="number" step="5"></label>
+        <label>가로 % <input id="tl-scaleX" type="number" step="5" min="10" max="400"></label>
+        <label>세로 % <input id="tl-scaleY" type="number" step="5" min="10" max="400"></label>
+        <label title="다음 키까지 천천히 시작해서 천천히 멈추기">부드럽게 <input id="tl-ease" type="checkbox"></label>
       </div>
     </div>
     </div>
@@ -140,6 +170,7 @@
 
   <script src="bit.js"></script>
   <script src="parts-editor.js"></script>
+  <script src="timeline-editor.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>

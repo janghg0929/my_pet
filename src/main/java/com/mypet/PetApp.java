@@ -10,7 +10,9 @@ import com.mypet.appearance.rendering.AppearanceRendering;
 import com.mypet.appearance.rendering.Draw;
 import com.mypet.parts.PartImages;
 import com.mypet.parts.PartLayout;
+import com.mypet.parts.PartTimeline;
 import com.mypet.parts.PartAnimation;
+import com.mypet.parts.PartMotion;
 import com.mypet.parts.SavedLook;
 import com.mypet.platform.PlatformSupport;
 import com.mypet.platform.PlatformSupport.PlatformRect;
@@ -194,6 +196,8 @@ final class PetApp implements SettingsHost {
 	// 부위 애니메이션: 틱 수(시간)와 상황별로 서서히 켜고 끄는 정도(0..1)
 	private long motionTicks;
 	private final java.util.Map<String, Double> motionWeights = new java.util.HashMap<>();
+	// 고급 시간 막대: 상황마다 켜진 뒤 지난 시간 (ms, 꺼지면 0 으로 → 다시 켜지면 처음부터)
+	private final java.util.Map<String, Double> motionElapsedMs = new java.util.HashMap<>();
 	private final PartImages partImages = PartImages.standard();
 	private PartLayout.Bounds layoutBounds = layout.bounds(Math.max(2, LIMB_SIZE));
 	private double charOriginX = DRAW_MARGIN + APPEARANCE_EXTRA_MARGIN + SIDE_EXTENSION;
@@ -1948,11 +1952,18 @@ final class PetApp implements SettingsHost {
 	private void updatePartMotion(String state) {
 		motionTicks++;
 		PartAnimation.fadeWeights(motionWeights, state);
+		double tickMs = 1000.0 / PartMotion.TICKS_PER_SECOND;
+		for (String s : PartAnimation.STATES) {
+			double elapsed = PartAnimation.ALWAYS.equals(s) ? motionTicks * tickMs
+				: (motionWeights.getOrDefault(s, 0.0) > 0 ? motionElapsedMs.getOrDefault(s, 0.0) + tickMs : 0.0);
+			motionElapsedMs.put(s, elapsed);
+		}
 	}
 
 	/** 부위의 지금 애니메이션 모양. */
 	private PartAnimation.Transform motionOf(String key) {
-		return PartAnimation.transform(layout.get(key).animations, motionTicks, motionWeights);
+		return PartTimeline.combine(PartAnimation.transform(layout.get(key).animations, motionTicks, motionWeights),
+			layout.timeline.transform(key, motionWeights, motionElapsedMs));
 	}
 
 	private Point lastCursor = new Point(-10_000, -10_000);
