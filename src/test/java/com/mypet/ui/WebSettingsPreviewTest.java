@@ -224,6 +224,7 @@ class WebSettingsPreviewTest {
 		settings[0].showViewForPreview("parts");
 		Thread.sleep(700);
 		SwingUtilities.invokeAndWait(() -> System.out.println("after main→parts: " + edges(settings[0].dialog())));
+		int partsHeight = settings[0].dialog().getHeight();
 		snapshot(settings[0], new File(out, "web-parts.png"));
 		runScript(settings[0], "var w = document.getElementById('parts-w'); w.value = '60'; w.dispatchEvent(new Event('input'));");
 		Thread.sleep(700);
@@ -236,6 +237,7 @@ class WebSettingsPreviewTest {
 		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=eyes]').click()");
 		Thread.sleep(300);
 		snapshot(settings[0], new File(out, "web-parts-eyes.png"));
+		assertTrue(settings[0].dialog().getHeight() == partsHeight, "눈을 골라도 창 크기 그대로: " + settings[0].dialog().getHeight());
 
 		// 회전: 몸통 20도, 왼팔 35도 (좌우 맞추기로 오른팔은 -35도), 눈 -10도
 		runScript(settings[0], "function turn(part, deg) { document.querySelector('#parts-tabs [data-part=' + part + ']').click();"
@@ -273,6 +275,55 @@ class WebSettingsPreviewTest {
 		System.out.println("blink hidden on arm=" + blinkOnArm + ", on eyes=" + blinkOnEyes);
 		assertTrue("true".equals(blinkOnArm) && "false".equals(blinkOnEyes), "부위별 움직임 종류");
 		Thread.sleep(400);
+		// 모양 탭, 움직임 탭, 움직임 있음/없음 모두 창 크기가 같아야 한다
+		assertTrue(settings[0].dialog().getHeight() == partsHeight, "움직임 탭에서도 창 크기 그대로: " + settings[0].dialog().getHeight());
+
+		// Ctrl+Z: 공중 자세·움직임 이전으로, Ctrl+Y: 다시
+		java.util.function.Function<String, Integer> airRotation = json ->
+			com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(json)).leftArm().animations.get("air").rotation;
+		runScript(settings[0], "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))");
+		Thread.sleep(300);
+		int afterUndo = airRotation.apply(sentParts.get());
+		runScript(settings[0], "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'y', ctrlKey: true, bubbles: true }))");
+		Thread.sleep(300);
+		int afterRedo = airRotation.apply(sentParts.get());
+		System.out.println("undo → air rotation " + afterUndo + ", redo → " + afterRedo
+			+ " | input shows " + evalScript(settings[0], "document.getElementById('anim-rotation').value"));
+		assertTrue(afterUndo == 0 && afterRedo == 60, "되돌리기/다시 하기");
+
+		// 마우스 휠 확대 (마우스 자리를 기준으로 1.2배씩)
+		runScript(settings[0], "document.querySelector('#parts-mode [data-mode=shape]').click()");
+		Thread.sleep(300);
+		String beforeZoomK = evalScript(settings[0], "String(window.bitPartsEditor.view.k)");
+		System.out.println("wheel support: " + evalScript(settings[0],
+			"typeof WheelEvent + ' onwheel=' + ('onwheel' in document.getElementById('parts-canvas'))"));
+		// 실제 마우스 휠처럼 Swing 쪽에서 휠 이벤트를 보낸다 (웹 엔진이 알아서 wheel/mousewheel 로 바꾼다)
+		String canvasCenter = evalScript(settings[0], "var b = document.getElementById('parts-canvas').getBoundingClientRect();"
+			+ " Math.round(b.left + 100) + ',' + Math.round(b.top + 80)");
+		String[] xy = canvasCenter.split(",");
+		java.lang.reflect.Field panelField = WebSettings.class.getDeclaredField("panel");
+		panelField.setAccessible(true);
+		java.awt.Component panel = (java.awt.Component) panelField.get(settings[0]);
+		SwingUtilities.invokeAndWait(() -> {
+			for (int i = 0; i < 2; i++) {
+				panel.dispatchEvent(new java.awt.event.MouseWheelEvent(panel, java.awt.event.MouseEvent.MOUSE_WHEEL,
+					System.currentTimeMillis(), 0, Integer.parseInt(xy[0]), Integer.parseInt(xy[1]), 0, false,
+					java.awt.event.MouseWheelEvent.WHEEL_UNIT_SCROLL, 3, -1));
+			}
+		});
+		Thread.sleep(300);
+		String zoomBySwing = evalScript(settings[0], "String(window.bitPartsEditor.view.k)");
+		// 웹 엔진 안에서 직접 휠 이벤트 보내기
+		runScript(settings[0], "var c = document.getElementById('parts-canvas'); var b = c.getBoundingClientRect();"
+			+ " c.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, clientX: b.left + 100, clientY: b.top + 80, bubbles: true, cancelable: true }));");
+		Thread.sleep(200);
+		System.out.println("zoom k: start=" + beforeZoomK + " after swing wheel=" + zoomBySwing
+			+ " after js wheel=" + evalScript(settings[0], "String(window.bitPartsEditor.view.k)"));
+		snapshot(settings[0], new File(out, "web-parts-zoom.png"));
+		assertTrue(Double.parseDouble(zoomBySwing) > Double.parseDouble(beforeZoomK) * 1.4, "마우스 휠 두 번에 1.2 × 1.2 배 확대");
+		assertTrue(settings[0].dialog().getHeight() == partsHeight, "모양 탭 창 크기 그대로");
+		runScript(settings[0], "document.querySelector('#parts-mode [data-mode=motion]').click()");
+		Thread.sleep(300);
 		String frameA = evalScript(settings[0], "document.getElementById('parts-canvas').toDataURL()");
 		snapshot(settings[0], new File(out, "web-parts-motion.png"));
 		Thread.sleep(250);

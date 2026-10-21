@@ -544,12 +544,7 @@
   if (window.PartsEditor) {
     editor = new window.PartsEditor({
       send: send,
-      getColor: function () { return state ? state.baseColor : "#4fc3f7"; },
-      onHeightChange: function () {
-        if (currentView === "parts") {
-          fitWindow();
-        }
-      }
+      getColor: function () { return state ? state.baseColor : "#4fc3f7"; }
     });
   }
   var search = document.getElementById("appearance-search");
@@ -568,6 +563,9 @@
   renderAppearanceList();
   show("main");
   send("ready");
+
+  // 미리보기/테스트용: 모습 꾸미기 편집기
+  window.bitPartsEditor = editor;
 
   // 미리보기/테스트용: 외형 목록과 페이지 번호 계산을 밖에서 볼 수 있게 한다
   window.bitAppearances = {

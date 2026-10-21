@@ -326,6 +326,29 @@ button {
   font-size: 11px;
 }
 
+/* [모양·사진] 과 [움직임] 칸을 겹쳐 두기: 더 큰 쪽 높이로 고정 */
+.parts-panels {
+  display: grid;
+}
+
+.parts-panels > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+/* 자리는 차지하고 안 보이기 (창 크기가 바뀌지 않게) */
+.off {
+  visibility: hidden;
+}
+
+/* 길어도 한 줄 (줄 수가 바뀌어 창 크기가 흔들리지 않게) */
+#parts-subtitle,
+#parts-status {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
 /* [모양·사진] [움직임] */
 .mode-tabs {
   grid-template-columns: 1fr 1fr;

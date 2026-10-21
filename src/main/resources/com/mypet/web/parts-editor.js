@@ -1,7 +1,8 @@
 // 모습 꾸미기 편집기: 부위(몸통, 양팔, 양다리, 눈)를 고르고, 끌어서 옮기고, 모서리로 크기를 바꾸고, 위쪽 동그라미로 돌린다.
 // [모양·사진]: 숫자 입력, 부위 사진 넣기/빼기(눈은 표정별).
 // [움직임]: 상황(항상/쉴 때/걸을 때/공중/잡힐 때)마다 자세(끌거나 돌려서) + 반복 움직임, 부위 중심점.
-// 좌우 맞추기, 기본 비트로 되돌리기. 바뀐 배치는 send("setParts", JSON) 으로 Java 에 보내 화면 비트에 바로 적용하고 저장한다.
+// 좌우 맞추기, 기본 비트로 되돌리기, Ctrl+Z / Ctrl+Y (되돌리기 / 다시 하기), 마우스 휠 확대 + 빈 곳 끌어서 화면 옮기기.
+// 바뀐 배치는 send("setParts", JSON) 으로 Java 에 보내 화면 비트에 바로 적용하고 저장한다.
 (function () {
   "use strict";
 
@@ -26,6 +27,21 @@
     { key: "left", label: "왼쪽" }, { key: "right", label: "오른쪽" }
   ];
   var TICK_MS = 1000 / 64;
+  var HISTORY_LIMIT = 100;
+  var ZOOM_MIN = 1, ZOOM_MAX = 16, ZOOM_STEP = 1.2;
+
+  /** 키 순서와 상관없이 같은 배치면 같은 글자 (되돌리기 기록에서 같은 배치인지 볼 때). */
+  function canonical(value) {
+    if (Array.isArray(value)) {
+      return "[" + value.map(canonical).join(",") + "]";
+    }
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map(function (key) {
+        return JSON.stringify(key) + ":" + canonical(value[key]);
+      }).join(",") + "}";
+    }
+    return JSON.stringify(value === undefined ? null : value);
+  }
 
   /** 각도를 -179..180 도로 맞춘다 (PartLayout.normalizeRotation 과 같다). */
   function normalizeRotation(degrees) {
@@ -47,7 +63,6 @@
   function PartsEditor(options) {
     this.send = options.send;
     this.getColor = options.getColor;
-    this.onHeightChange = options.onHeightChange;
     this.canvas = document.getElementById("parts-canvas");
     this.layout = window.BitView.copyLayout();
     this.selected = "body";
@@ -61,6 +76,13 @@
     this.clock = new window.BitView.MotionClock();
     this.animating = false;
     this.visible = false;
+    // 되돌리기: 저장된(Java 에 보낸) 배치들. committed = 지금 저장된 배치
+    this.undoStack = [];
+    this.redoStack = [];
+    this.committed = null;
+    this.committedKey = null;
+    // 마우스 휠로 확대했으면 자동으로 다시 맞추지 않는다
+    this.zoomed = false;
     this.build();
     this.buildMotion();
   }
@@ -137,10 +159,132 @@
     // 창 너비가 바뀌면 다시 맞춰 그린다
     window.addEventListener("resize", function () {
       if (!self.drag) {
+        self.zoomed = false;
         self.view = null;
         self.draw();
       }
     });
+    // Ctrl+Z 되돌리기, Ctrl+Y / Ctrl+Shift+Z 다시 하기 (모습 꾸미기 화면에서만)
+    document.addEventListener("keydown", function (event) {
+      if (!self.visible || !(event.ctrlKey || event.metaKey)) {
+        return;
+      }
+      var key = (event.key || "").toLowerCase();
+      var z = key === "z" || event.keyCode === 90;
+      var y = key === "y" || event.keyCode === 89;
+      if (!z && !y) {
+        return;
+      }
+      event.preventDefault();
+      if (document.activeElement && document.activeElement.blur) {
+        document.activeElement.blur(); // 숫자 칸의 자체 되돌리기 대신 편집기 되돌리기
+      }
+      if (y || event.shiftKey) {
+        self.redo();
+      } else {
+        self.undo();
+      }
+    });
+    // 마우스 휠: 마우스 자리를 기준으로 확대/축소. 더블클릭(빈 곳): 원래 크기로
+    // (앱 안의 웹 엔진은 wheel 과 예전 mousewheel 을 둘 다 보낼 수 있어서, wheel 을 받았으면 mousewheel 은 무시)
+    var sawWheel = false;
+    function onWheel(event) {
+      if (event.type === "wheel") {
+        sawWheel = true;
+      } else if (sawWheel) {
+        return;
+      }
+      event.preventDefault();
+      var delta = event.type === "wheel" ? event.deltaY : -event.wheelDelta;
+      if (delta) {
+        self.zoomAt(self.pointer(event), delta < 0 ? ZOOM_STEP : 1 / ZOOM_STEP);
+      }
+    }
+    this.canvas.addEventListener("wheel", onWheel);
+    this.canvas.addEventListener("mousewheel", onWheel);
+    this.canvas.addEventListener("dblclick", function (event) {
+      var p = self.pointer(event);
+      if (!self.hit(p.x, p.y)) {
+        self.resetZoom();
+      }
+    });
+  };
+
+  // ---------------------------------------------------------------- 확대
+
+  PartsEditor.prototype.zoomAt = function (point, factor) {
+    if (!this.view || this.drag) {
+      return;
+    }
+    var v = this.view;
+    var k = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v.k * factor));
+    if (k === v.k) {
+      return;
+    }
+    // 마우스 아래 점이 그대로 있도록
+    v.ox = point.x - (point.x - v.ox) * (k / v.k);
+    v.oy = point.y - (point.y - v.oy) * (k / v.k);
+    v.k = k;
+    this.zoomed = true;
+    this.draw();
+  };
+
+  PartsEditor.prototype.resetZoom = function () {
+    this.zoomed = false;
+    this.view = null;
+    this.draw();
+  };
+
+  // ---------------------------------------------------------------- 되돌리기
+
+  /** Java 가 보낸(또는 내가 보낸) 저장된 배치를 기록한다. 바뀌었으면 이전 배치를 되돌리기 목록에 넣는다. */
+  PartsEditor.prototype.remember = function (layout) {
+    var key = canonical(layout);
+    if (this.committedKey !== null && key !== this.committedKey) {
+      this.undoStack.push(this.committed);
+      if (this.undoStack.length > HISTORY_LIMIT) {
+        this.undoStack.shift();
+      }
+      this.redoStack = [];
+    }
+    this.committed = window.BitView.copyLayout(layout);
+    this.committedKey = key;
+  };
+
+  /** 아직 안 보낸 변경(숫자 입력 중 등)이 있으면 지금 보낸다. */
+  PartsEditor.prototype.flush = function () {
+    if (this.commitTimer) {
+      clearTimeout(this.commitTimer);
+      this.commitTimer = null;
+      this.sendLayout();
+    }
+  };
+
+  PartsEditor.prototype.undo = function () {
+    this.flush();
+    if (!this.undoStack.length || this.drag) {
+      return;
+    }
+    this.redoStack.push(this.committed);
+    this.restore(this.undoStack.pop());
+  };
+
+  PartsEditor.prototype.redo = function () {
+    this.flush();
+    if (!this.redoStack.length || this.drag) {
+      return;
+    }
+    this.undoStack.push(this.committed);
+    this.restore(this.redoStack.pop());
+  };
+
+  PartsEditor.prototype.restore = function (layout) {
+    this.layout = window.BitView.copyLayout(layout);
+    this.committed = window.BitView.copyLayout(layout);
+    this.committedKey = canonical(this.committed);
+    this.refreshControls();
+    this.draw();
+    this.send("setParts", JSON.stringify(this.layout));
   };
 
   // ---------------------------------------------------------------- 움직임
@@ -234,13 +378,17 @@
     this.commit(250);
   };
 
-  /** 움직임 칸 상태를 고른 부위·상황에 맞춘다. 높이가 바뀌면 true. */
+  /** 숨길 칸은 자리를 남긴 채 안 보이게 (어떤 탭·상황이어도 창 크기가 같다). */
+  function setOff(id, off) {
+    document.getElementById(id).classList.toggle("off", off);
+  }
+
+  /** 움직임 칸 상태를 고른 부위·상황에 맞춘다. */
   PartsEditor.prototype.refreshMotionControls = function () {
     var self = this;
     var shape = this.mode === "shape";
-    var layoutBefore = this.motionLayoutKey();
-    document.getElementById("parts-shape").hidden = !shape;
-    document.getElementById("parts-motion").hidden = shape;
+    setOff("parts-shape", !shape);
+    setOff("parts-motion", shape);
     Array.prototype.forEach.call(document.querySelectorAll("#parts-mode .seg"), function (button) {
       button.classList.toggle("selected", button.getAttribute("data-mode") === self.mode);
     });
@@ -274,7 +422,7 @@
     document.getElementById("anim-pivot").value = part.pivot;
 
     var active = m.type !== "none";
-    document.getElementById("motion-settings").hidden = !active;
+    setOff("motion-settings", !active);
     ["size", "speed"].forEach(function (field) {
       var input = document.getElementById("motion-" + field);
       if (document.activeElement !== input) {
@@ -283,7 +431,7 @@
       document.getElementById("motion-" + field + "-value").textContent = m[field];
     });
     var limb = !!MIRROR[this.selected];
-    document.getElementById("motion-alternate-row").hidden = !(limb && this.layout.symmetric);
+    setOff("motion-alternate-row", !(limb && this.layout.symmetric));
     document.getElementById("motion-alternate").checked = !!m.alternate;
 
     var subtitle = document.getElementById("parts-subtitle");
@@ -292,16 +440,8 @@
     } else if (always) {
       subtitle.textContent = "언제나 하는 움직임 · 자세는 다른 상황에서 잡아요";
     } else {
-      subtitle.textContent = "'" + STATE_LABELS[this.animState] + "' 자세: 부위를 끌거나 돌려서 잡아요";
+      subtitle.textContent = "'" + STATE_LABELS[this.animState] + "' 자세: 끌거나 돌려서 잡아요";
     }
-    return layoutBefore !== this.motionLayoutKey();
-  };
-
-  /** 높이에 영향을 주는 칸들이 보이는지 (바뀌면 창 높이를 다시 맞춘다). */
-  PartsEditor.prototype.motionLayoutKey = function () {
-    return ["parts-shape", "parts-motion", "motion-settings", "motion-alternate-row"].map(function (id) {
-      return document.getElementById(id).hidden ? "0" : "1";
-    }).join("");
   };
 
   /** 화면에 보일 때 움직임 화면이면 미리보기를 움직인다. */
@@ -351,6 +491,7 @@
       return;
     }
     this.layout = window.BitView.copyLayout(layout);
+    this.remember(this.layout);
     this.refreshControls();
     this.draw();
   };
@@ -380,17 +521,9 @@
       tabs[i].classList.toggle("selected", tabs[i].getAttribute("data-part") === this.selected);
     }
     var eyeTabs = document.getElementById("parts-eye-tabs");
-    // 표정 사진 줄은 모양·사진 화면에서만
-    var hideEyeTabs = this.selected !== "eyes" || this.mode !== "shape";
-    var heightChanged = this.refreshMotionControls();
-    if (eyeTabs.hidden !== hideEyeTabs) {
-      eyeTabs.hidden = hideEyeTabs;
-      heightChanged = true;
-    }
-    // 표정 줄이나 움직임 칸이 생기거나 없어지면 창 높이를 다시 맞춘다
-    if (heightChanged && this.onHeightChange) {
-      this.onHeightChange();
-    }
+    // 표정 사진 줄은 눈을 골랐을 때만 (자리는 늘 있다)
+    setOff("parts-eye-tabs", this.selected !== "eyes");
+    this.refreshMotionControls();
     var exprButtons = eyeTabs.querySelectorAll(".seg");
     for (var j = 0; j < exprButtons.length; j++) {
       exprButtons[j].classList.toggle("selected", exprButtons[j].getAttribute("data-expr") === this.expression);
@@ -474,8 +607,13 @@
     }
     this.commitTimer = setTimeout(function () {
       self.commitTimer = null;
-      self.send("setParts", JSON.stringify(self.layout));
+      self.sendLayout();
     }, delay);
+  };
+
+  PartsEditor.prototype.sendLayout = function () {
+    this.remember(this.layout);
+    this.send("setParts", JSON.stringify(this.layout));
   };
 
   // ---------------------------------------------------------------- 그리기
@@ -527,8 +665,9 @@
     var c = window.BitView.prepare(this.canvas);
     // 화면을 다시 맞추는 건 처음, 창 크기가 바뀌었을 때, 비트가 캔버스 밖으로 나갔을 때만
     // (부위 하나를 옮겼는데 나머지가 같이 움직여 보이지 않게). 끄는 중에는 그대로 둔다.
-    if (!this.view || this.view.w !== c.w || this.view.h !== c.h || (!this.drag && !this.fits())) {
+    if (!this.view || this.view.w !== c.w || this.view.h !== c.h || (!this.drag && !this.zoomed && !this.fits())) {
       this.view = this.fit(c.w, c.h);
+      this.zoomed = false;
     }
     var v = this.view;
     var ctx = c.ctx;
@@ -680,7 +819,7 @@
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
     var movable = this.mode === "shape" || this.posing();
-    this.canvas.style.cursor = !target ? "default"
+    this.canvas.style.cursor = !target ? "grab"
       : (target.rotate ? "grab" : (target.resize ? "nwse-resize" : (movable ? "move" : "pointer")));
   };
 
@@ -688,6 +827,9 @@
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
     if (!target) {
+      // 빈 곳: 화면 옮기기
+      event.preventDefault();
+      this.drag = { pan: true, startX: p.x, startY: p.y, ox: this.view.ox, oy: this.view.oy };
       return;
     }
     event.preventDefault();
@@ -717,6 +859,13 @@
     }
     var p = this.pointer(event);
     var drag = this.drag;
+    if (drag.pan) {
+      this.view.ox = drag.ox + (p.x - drag.startX);
+      this.view.oy = drag.oy + (p.y - drag.startY);
+      this.zoomed = true;
+      this.draw();
+      return;
+    }
     var k = this.view.k;
     var part = this.layout[drag.key];
     var target = drag.posing ? part.animations[this.animState] : part;

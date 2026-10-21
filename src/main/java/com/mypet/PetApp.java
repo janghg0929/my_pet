@@ -258,6 +258,7 @@ final class PetApp implements SettingsHost {
 		pixelHeartAppearanceMode = settings.pixelHeart();
 		headsetAppearanceMode = settings.headset();
 		layout = SettingsStore.get().parts();
+		partImages.deleteUnused(SettingsStore.get().usedImageFiles()); // 설정 창을 연 채로 끝냈을 때 남은 사진
 
 		// 작업 영역 (윈도우 작업표시줄, 맥 메뉴바/독 제외)
 		Rectangle work = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
@@ -675,6 +676,8 @@ final class PetApp implements SettingsHost {
 		if (isDialogAlive(settingsDialog)) {
 			settingsDialog.dispose();
 		}
+		// 모습 꾸미기에서 뺀 사진은 되돌리기(Ctrl+Z)로 다시 쓸 수 있어서 창을 닫을 때 정리한다
+		partImages.deleteUnused(SettingsStore.get().usedImageFiles());
 		settingsDialog = null;
 		webSettings = null;
 		refreshSettingsDialogOpenState();
@@ -801,13 +804,12 @@ final class PetApp implements SettingsHost {
 
 	// ---------------------------------------------------------------- 모습 꾸미기 (SettingsHost)
 
-	/** 배치를 화면 비트에 적용하고 settings.json 에 저장, 안 쓰는 사진은 지운다. */
+	/** 배치를 화면 비트에 적용하고 settings.json 에 저장 (안 쓰는 사진은 되돌리기를 위해 설정 창을 닫을 때 지운다). */
 	private void saveLayout(PartLayout newLayout, String status) {
 		applyLayout(newLayout);
 		SettingsStore store = SettingsStore.get();
 		store.setParts(layout);
 		Path saved = store.save();
-		partImages.deleteUnused(store.usedImageFiles());
 		refreshWebSettings(saved == null ? status + " (저장 실패)" : status);
 	}
 
@@ -918,7 +920,6 @@ final class PetApp implements SettingsHost {
 		SettingsStore store = SettingsStore.get();
 		store.setLooks(looks);
 		Path saved = store.save();
-		partImages.deleteUnused(store.usedImageFiles());
 		refreshWebSettings(saved == null ? status + " (저장 실패)" : status);
 	}
 
