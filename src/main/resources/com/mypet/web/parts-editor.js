@@ -22,7 +22,7 @@
     this.selected = "body";
     this.expression = "neutral";
     this.drag = null;
-    this.view = null; // { k, ox, oy } (화면 px)
+    this.view = null; // { k, ox, oy, w, h } (화면 px)
     this.commitTimer = null;
     this.resetArmed = false;
     this.build();
@@ -113,7 +113,6 @@
       return;
     }
     this.layout = window.BitView.copyLayout(layout);
-    this.view = null;
     this.refreshControls();
     this.draw();
   };
@@ -193,26 +192,10 @@
     t.flip = !!s.image && !s.flip;
   };
 
-  /** 몸통 가운데 x 의 두 배 (좌우 맞추기 기준선). */
-  PartsEditor.prototype.doubledCenter = function () {
-    var b = this.layout.body;
-    return b.x * 2 + b.w;
-  };
-
-  /**
-   * key 를 바꾼 뒤 좌우 맞추기 반영. 몸통이 바뀌면 오른쪽 부위를 가운데가 움직인 만큼 옮긴다
-   * (기본 비트의 다리는 1px 비대칭이라 다시 거울 복사하면 오른다리가 1px 움직인다).
-   */
-  PartsEditor.prototype.afterChange = function (key, centerBefore) {
-    if (!this.layout.symmetric) {
-      return;
-    }
-    if (MIRROR[key]) {
+  /** key 를 바꾼 뒤 좌우 맞추기 반영. 팔/다리만 반대쪽이 따라오고, 몸통을 바꿔도 다른 부위는 그대로다. */
+  PartsEditor.prototype.afterChange = function (key) {
+    if (this.layout.symmetric && MIRROR[key]) {
       this.mirrorFrom(key);
-    } else if (key === "body") {
-      var shift = this.doubledCenter() - centerBefore;
-      this.layout.rightArm.x += shift;
-      this.layout.rightLeg.x += shift;
     }
   };
 
@@ -224,12 +207,10 @@
       return;
     }
     var part = this.part();
-    var centerBefore = this.doubledCenter();
     part[field] = field === "w" || field === "h"
       ? Math.max(MIN_SIZE, Math.min(MAX_SIZE, value))
       : Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, value));
-    this.afterChange(this.selected, centerBefore);
-    this.view = null;
+    this.afterChange(this.selected);
     this.draw();
     this.commit(300);
   };
@@ -247,7 +228,7 @@
 
   // ---------------------------------------------------------------- 그리기
 
-  /** 비트 전체가 캔버스에 들어오도록 배율과 위치를 정한다 (끄는 중에는 그대로 둔다). */
+  /** 비트 전체가 캔버스에 들어오도록 배율과 위치를 정한다. */
   PartsEditor.prototype.fit = function (w, h) {
     var b = window.BitView.bounds(this.layout, false);
     var bw = Math.max(20, b.maxX - b.minX);
@@ -256,8 +237,19 @@
     return {
       k: k,
       ox: w / 2 - ((b.minX + b.maxX) / 2) * k,
-      oy: h / 2 - ((b.minY + b.maxY) / 2) * k
+      oy: h / 2 - ((b.minY + b.maxY) / 2) * k,
+      w: w,
+      h: h
     };
+  };
+
+  /** 지금 배율·위치로 비트 전체가 캔버스 안에 보이는지. */
+  PartsEditor.prototype.fits = function () {
+    var v = this.view;
+    var b = window.BitView.bounds(this.layout, false);
+    var margin = 6;
+    return v.ox + b.minX * v.k >= margin && v.ox + b.maxX * v.k <= v.w - margin
+      && v.oy + b.minY * v.k >= margin && v.oy + b.maxY * v.k <= v.h - margin;
   };
 
   PartsEditor.prototype.draw = function () {
@@ -265,7 +257,9 @@
       return;
     }
     var c = window.BitView.prepare(this.canvas);
-    if (!this.view || !this.drag) {
+    // 화면을 다시 맞추는 건 처음, 창 크기가 바뀌었을 때, 비트가 캔버스 밖으로 나갔을 때만
+    // (부위 하나를 옮겼는데 나머지가 같이 움직여 보이지 않게). 끄는 중에는 그대로 둔다.
+    if (!this.view || this.view.w !== c.w || this.view.h !== c.h || (!this.drag && !this.fits())) {
       this.view = this.fit(c.w, c.h);
     }
     var v = this.view;
@@ -376,7 +370,6 @@
     var dx = Math.round((p.x - this.drag.startX) / this.view.k);
     var dy = Math.round((p.y - this.drag.startY) / this.view.k);
     var part = this.layout[this.drag.key];
-    var centerBefore = this.doubledCenter();
     if (this.drag.resize) {
       part.w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, this.drag.w + dx));
       part.h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, this.drag.h + dy));
@@ -385,7 +378,7 @@
       part.y = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, this.drag.y + dy));
     }
     this.drag.moved = this.drag.moved || dx !== 0 || dy !== 0;
-    this.afterChange(this.drag.key, centerBefore);
+    this.afterChange(this.drag.key);
     this.refreshControls();
     this.draw();
   };
@@ -396,7 +389,6 @@
     }
     var moved = this.drag.moved;
     this.drag = null;
-    this.view = null;
     this.draw();
     if (moved) {
       this.commit(0);

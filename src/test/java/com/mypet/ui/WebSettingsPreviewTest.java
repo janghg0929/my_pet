@@ -215,8 +215,8 @@ class WebSettingsPreviewTest {
 		assertTrue(parts != null && parts.contains("\"w\":60"), "setParts 가 안 왔거나 너비가 다름: " + parts);
 		com.mypet.parts.PartLayout sent = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(parts));
 		System.out.println("parts sent: body w=" + sent.body().w + ", rightArm x=" + sent.rightArm().x + ", rightLeg x=" + sent.rightLeg().x);
-		// 좌우 맞추기: 몸통이 16px 넓어진 만큼 오른팔/오른다리도 따라간다 (원래 1px 비대칭은 유지)
-		assertTrue(sent.rightArm().x == 61 && sent.rightLeg().x == 41, "오른쪽 부위 위치: " + sent.rightArm().x + ", " + sent.rightLeg().x);
+		// 몸통을 바꿔도 팔/다리는 그대로 (부위마다 따로 움직인다)
+		assertTrue(sent.rightArm().x == 45 && sent.rightLeg().x == 25, "오른쪽 부위 위치: " + sent.rightArm().x + ", " + sent.rightLeg().x);
 		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=eyes]').click()");
 		Thread.sleep(300);
 		snapshot(settings[0], new File(out, "web-parts-eyes.png"));
