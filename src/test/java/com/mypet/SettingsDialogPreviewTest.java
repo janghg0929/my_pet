@@ -109,6 +109,10 @@ class SettingsDialogPreviewTest {
 		layout.eyes().y = 14;
 		layout.eyes().w = 24;
 		layout.eyes().h = 10;
+		// 만든 부위: 몸통 오른쪽 위의 검은 점 "꼬리"
+		java.util.Map<String, Object> withTail = new java.util.LinkedHashMap<>(layout.toJson());
+		withTail.put("c_tail", java.util.Map.of("name", "꼬리", "x", 52, "y", 4, "w", 6, "h", 6));
+		layout = PartLayout.fromJson(withTail);
 		app.applyLayout(layout);
 		set(app, "motionTicks", 21L);
 		@SuppressWarnings("unchecked")

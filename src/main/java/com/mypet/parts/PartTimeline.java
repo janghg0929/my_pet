@@ -351,8 +351,9 @@ public final class PartTimeline {
 			if (!(item.get("tracks") instanceof Map<?, ?> tracks)) {
 				continue;
 			}
-			for (String part : PartLayout.KEYS) {
-				if (!(tracks.get(part) instanceof List<?> list)) {
+			for (Object rawPart : tracks.keySet()) {
+				if (!(rawPart instanceof String part) || !(PartLayout.KEYS.contains(part) || PartLayout.isCustom(part))
+					|| !(tracks.get(part) instanceof List<?> list)) {
 					continue;
 				}
 				List<Key> keys = new ArrayList<>();

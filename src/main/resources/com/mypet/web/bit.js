@@ -14,7 +14,29 @@
     rightLeg: { x: 25, y: 29, w: 8, h: 8, rotation: 0, image: null, flip: false },
     eyes: { x: 14, y: 12, w: 18, h: 6, rotation: 0, images: { neutral: null, grab: null, fall: null } }
   };
+  // 기본 부위. 사용자가 만든 부위는 "c_…" 이름으로 더 붙는다 (PartLayout.isCustom)
   var PART_KEYS = ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "eyes"];
+  var BUILTIN_NAMES = { body: "몸통", leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리", eyes: "눈" };
+
+  function isCustom(key) {
+    return /^c_[A-Za-z0-9]{1,16}$/.test(key);
+  }
+
+  /** 만든 부위 이름들 (만든 순서). */
+  function customKeys(layout) {
+    return Object.keys(layout || {}).filter(isCustom);
+  }
+
+  /** 모든 부위 이름 (기본 + 만든 것, 화면에서 뺀 것도). */
+  function partKeys(layout) {
+    return PART_KEYS.concat(customKeys(layout));
+  }
+
+  /** 부위 이름 (정한 이름, 없으면 기본 이름 / 만든 부위는 "새 부위"). */
+  function partName(layout, key) {
+    var part = layout && layout[key];
+    return (part && part.name) || BUILTIN_NAMES[key] || "새 부위";
+  }
   var DEFAULT_EYES = { x: 14, y: 12, w: 18, h: 6 };
   var ARM_RAISE = 8; // 점프할 때 팔을 드는 높이
   var EYE = { scale: 28 / 96, offsetX: 8 - 2.5, stroke: 2 };
@@ -48,7 +70,7 @@
 
   function copyLayout(layout) {
     var copy = JSON.parse(JSON.stringify(layout || DEFAULT_LAYOUT));
-    PART_KEYS.forEach(function (key) {
+    partKeys(copy).forEach(function (key) {
       normalizePart(key, copy[key]);
     });
     copy.timeline = normalizeTimeline(copy.timeline);
@@ -79,8 +101,8 @@
         restart: c.restart !== false,
         tracks: {}
       };
-      PART_KEYS.forEach(function (key) {
-        var keys = (c.tracks && c.tracks[key]) || [];
+      Object.keys(c.tracks || {}).filter(function (key) { return PART_KEYS.indexOf(key) >= 0 || isCustom(key); }).forEach(function (key) {
+        var keys = c.tracks[key] || [];
         if (keys.length) {
           clip.tracks[key] = keys.map(function (k) {
             var n = newKey(clamp(Math.round(k.t || 0), 0, clip.duration));
@@ -232,11 +254,12 @@
   var MOTION_TYPES_FOR = {
     eyes: ["none", "blink", "sway", "bob"],
     body: ["none", "breathe", "bob", "sway", "swing"],
-    limb: ["none", "swing", "bob", "sway"]
+    limb: ["none", "swing", "bob", "sway"],
+    custom: ["none", "swing", "bob", "sway", "breathe", "blink"] // 만든 부위: 다 된다
   };
 
   function motionTypesFor(key) {
-    return MOTION_TYPES_FOR[key] || MOTION_TYPES_FOR.limb;
+    return isCustom(key) ? MOTION_TYPES_FOR.custom : (MOTION_TYPES_FOR[key] || MOTION_TYPES_FOR.limb);
   }
 
   /** 부위의 기본 중심점: 팔은 몸 쪽 가장자리, 다리는 위쪽, 나머지는 가운데 (PartLayout.defaultPivot). */
@@ -267,6 +290,9 @@
   /** 빠진 값(중심점, 상황별 애니메이션)을 채운다. 예전 미리보기의 part.motion 은 그 "언제" 상황으로 옮긴다. */
   function normalizePart(key, part) {
     part.rotation = part.rotation || 0;
+    part.visible = part.visible !== false;
+    part.shape = part.shape || (isCustom(key) ? "dot" : "rect");
+    part.name = part.name || null;
     part.pivot = part.pivot || defaultPivot(key);
     var animations = part.animations || {};
     if (!part.animations && part.motion && part.motion.type) {
@@ -470,8 +496,11 @@
   /** 애니메이션까지 넣은 범위, 넉넉하게 (PartLayout.motionBounds). */
   function motionBounds(layout, withRaise) {
     var b = bounds(layout, withRaise);
-    PART_KEYS.forEach(function (key) {
+    partKeys(layout).forEach(function (key) {
       var part = layout[key];
+      if (part.visible === false) {
+        return;
+      }
       var clipAlways = clipReach(layout.timeline, key, true);
       var clipMost = clipReach(layout.timeline, key, false);
       var clipped = clipAlways[0] + clipAlways[1] + clipAlways[2] + clipAlways[3] > 0 || clipAlways[4] !== 1
@@ -526,7 +555,10 @@
   /** 전체 범위. withRaise 면 팔을 든 높이까지 포함. */
   function bounds(layout, withRaise) {
     var b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
-    PART_KEYS.forEach(function (key) {
+    partKeys(layout).forEach(function (key) {
+      if (layout[key].visible === false) {
+        return;
+      }
       var box = partBox(layout[key]);
       var arm = key === "leftArm" || key === "rightArm";
       b.minX = Math.min(b.minX, box.minX);
@@ -534,6 +566,9 @@
       b.minY = Math.min(b.minY, arm && withRaise ? box.minY - ARM_RAISE : box.minY);
       b.maxY = Math.max(b.maxY, box.maxY);
     });
+    if (b.minX === Infinity) {
+      return { minX: 0, minY: 0, maxX: 44, maxY: 28 }; // 다 뺐으면 몸통 자리
+    }
     return b;
   }
 
@@ -622,6 +657,16 @@
     applyPartTransform(ctx, part, ox + x * k, oy + y * k, mt, k);
     if (image) {
       drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, flip);
+    } else if (part.shape === "dot") {
+      // 새로 만든 부위: 검은 점 (앱 안 웹 엔진은 ellipse 가 없어서 원을 늘린다)
+      ctx.save();
+      ctx.translate(ox + (x + part.w / 2) * k, oy + (y + part.h / 2) * k);
+      ctx.scale(part.w * k / 2, part.h * k / 2);
+      ctx.beginPath();
+      ctx.arc(0, 0, 1, 0, Math.PI * 2);
+      ctx.restore();
+      ctx.fillStyle = "#000";
+      ctx.fill();
     } else {
       outlinedRect(ctx, ox, oy, k, x, y, x + part.w, y + part.h, color);
     }
@@ -639,14 +684,33 @@
     function photo(key) {
       return p.motion && p.motion.photo ? p.motion.photo(L, key) : null;
     }
-    // 몸통, 다리 (앱과 같은 순서로 그린다)
-    drawPart(ctx, ox, oy, k, L.body, 0, 0, color, mt("body"), photo("body"));
-    drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color, mt("leftLeg"), photo("leftLeg"));
-    drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color, mt("rightLeg"), photo("rightLeg"));
-    drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"), photo("eyes"));
-    // 팔
-    drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color, mt("leftArm"), photo("leftArm"));
-    drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color, mt("rightArm"), photo("rightArm"));
+    function shown(key) {
+      return L[key] && L[key].visible !== false;
+    }
+    // 몸통, 다리 → 눈 → 만든 부위 → 팔 (앱과 같은 순서, 화면에서 뺀 부위는 안 그린다)
+    if (shown("body")) {
+      drawPart(ctx, ox, oy, k, L.body, 0, 0, color, mt("body"), photo("body"));
+    }
+    if (shown("leftLeg")) {
+      drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color, mt("leftLeg"), photo("leftLeg"));
+    }
+    if (shown("rightLeg")) {
+      drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color, mt("rightLeg"), photo("rightLeg"));
+    }
+    if (shown("eyes")) {
+      drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"), photo("eyes"));
+    }
+    customKeys(L).forEach(function (key) {
+      if (shown(key)) {
+        drawPart(ctx, ox, oy, k, L[key], 0, 0, color, mt(key), photo(key));
+      }
+    });
+    if (shown("leftArm")) {
+      drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color, mt("leftArm"), photo("leftArm"));
+    }
+    if (shown("rightArm")) {
+      drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color, mt("rightArm"), photo("rightArm"));
+    }
   }
 
   function expressionOf(p) {
@@ -935,6 +999,10 @@
   window.BitView = {
     DEFAULT_LAYOUT: DEFAULT_LAYOUT,
     PART_KEYS: PART_KEYS,
+    isCustom: isCustom,
+    customKeys: customKeys,
+    partKeys: partKeys,
+    partName: partName,
     images: images,
     copyLayout: copyLayout,
     setText: setText,

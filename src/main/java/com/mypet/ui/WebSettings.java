@@ -458,6 +458,20 @@ public final class WebSettings implements SettingsHost.View {
 			});
 		}
 
+		/** 글자 묻기 (부위 이름 등) → window.bitTextAnswer(글자 또는 null). */
+		public void askText(Object title, Object initial) {
+			String titleText = title == null ? "" : String.valueOf(title);
+			String initialText = initial == null ? "" : String.valueOf(initial);
+			SwingUtilities.invokeLater(() -> {
+				String answer = host.askText(titleText, initialText);
+				Platform.runLater(() -> {
+					if (loaded) {
+						engine.executeScript("window.bitTextAnswer && window.bitTextAnswer(" + (answer == null ? "null" : jsString(answer)) + ")");
+					}
+				});
+			});
+		}
+
 		public void resetParts() {
 			SwingUtilities.invokeLater(host::resetParts);
 		}

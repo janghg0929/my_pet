@@ -36,6 +36,7 @@ class WebSettingsPreviewTest {
 		assumeTrue(hasJavaFx, "JavaFX 가 없는 JDK");
 
 		java.util.concurrent.atomic.AtomicReference<String> sentParts = new java.util.concurrent.atomic.AtomicReference<>();
+		java.util.concurrent.atomic.AtomicReference<String> askedText = new java.util.concurrent.atomic.AtomicReference<>();
 		SettingsHost host = new SettingsHost() {
 			@Override
 			public String settingsStateJson() {
@@ -65,6 +66,11 @@ class WebSettingsPreviewTest {
 
 			@Override
 			public void removePartImage(String part, String expression) {
+			}
+
+			@Override
+			public String askText(String title, String initial) {
+				return askedText.get(); // 테스트에서 정한 대답
 			}
 
 			@Override
@@ -247,6 +253,46 @@ class WebSettingsPreviewTest {
 		Thread.sleep(300);
 		snapshot(settings[0], new File(out, "web-parts-eyes.png"));
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "눈을 골라도 창 크기 그대로: " + settings[0].dialog().getHeight());
+
+		// 부위 추가: [＋ 부위] → [새로 만들기] → 이름 "꼬리" (Swing 입력 창 대신 테스트가 대답) → 검은 점이 화면에
+		askedText.set("꼬리");
+		runScript(settings[0], "document.getElementById('parts-add').click(); document.getElementById('parts-new').click();");
+		Thread.sleep(700);
+		snapshot(settings[0], new File(out, "web-parts-custom.png"));
+		com.mypet.parts.PartLayout withTail = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		String tailKey = withTail.customKeys().isEmpty() ? null : withTail.customKeys().get(0);
+		System.out.println("custom part: " + tailKey + " name=" + (tailKey == null ? null : withTail.nameOf(tailKey))
+			+ " tabs=" + evalScript(settings[0], "Array.prototype.map.call(document.querySelectorAll('#parts-tabs .seg'), function (b) { return b.textContent; }).join(',')")
+			+ " | " + edges(settings[0].dialog()));
+		assertTrue(tailKey != null && "꼬리".equals(withTail.nameOf(tailKey)) && com.mypet.parts.PartLayout.SHAPE_DOT.equals(withTail.get(tailKey).shape),
+			"새 부위 만들기");
+		assertTrue(settings[0].dialog().getHeight() == partsHeight, "부위를 더해도 창 크기 그대로: " + settings[0].dialog().getHeight());
+		// [빼기] → 가져오기 목록에 [가져오기] → 다시 넣기, ⋮ → 이름 수정 → 삭제(두 번)
+		runScript(settings[0], "document.getElementById('parts-remove').click()");
+		Thread.sleep(400);
+		boolean hidden = !com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).get(tailKey).visible;
+		runScript(settings[0], "document.getElementById('parts-add').click();"
+			+ " var rows = document.querySelectorAll('#parts-library .add-row'); rows[rows.length - 1].querySelector('.btn-primary').click();");
+		Thread.sleep(400);
+		boolean back = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).get(tailKey).visible;
+		askedText.set("긴 꼬리");
+		runScript(settings[0], "document.getElementById('parts-add').click();"
+			+ " var rows = document.querySelectorAll('#parts-library .add-row'); rows[rows.length - 1].querySelector('.add-more').click();"
+			+ " document.querySelector('#parts-library .add-menu button').click();");
+		Thread.sleep(500);
+		String renamed = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).nameOf(tailKey);
+		String builtinDelete = evalScript(settings[0], "document.querySelectorAll('#parts-library .add-row')[0].querySelector('.add-more').click();"
+			+ " String(document.querySelectorAll('#parts-library .add-menu button')[1].disabled)");
+		snapshot(settings[0], new File(out, "web-parts-library.png"));
+		runScript(settings[0], "var rows = document.querySelectorAll('#parts-library .add-row'); rows[rows.length - 1].querySelector('.add-more').click();"
+			+ " var del = function () { return document.querySelectorAll('#parts-library .add-menu button')[1]; }; del().click(); del().click();"
+			+ " document.getElementById('parts-add-close').click();");
+		Thread.sleep(500);
+		boolean deleted = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).customKeys().isEmpty();
+		System.out.println("custom part: hidden=" + hidden + " back=" + back + " renamed=" + renamed + " builtin delete disabled=" + builtinDelete
+			+ " deleted=" + deleted);
+		assertTrue(hidden && back && "긴 꼬리".equals(renamed) && "true".equals(builtinDelete) && deleted, "빼기/가져오기/이름 수정/삭제");
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=body]').click()");
 
 		// 회전: 몸통 20도, 왼팔 35도 (좌우 맞추기로 오른팔은 -35도), 눈 -10도
 		runScript(settings[0], "function turn(part, deg) { document.querySelector('#parts-tabs [data-part=' + part + ']').click();"

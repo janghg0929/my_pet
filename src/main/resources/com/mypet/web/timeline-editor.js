@@ -10,8 +10,7 @@
   var BV = window.BitView;
 
   var STATE_LABELS = { always: "항상", idle: "쉴 때", walk: "걸을 때", air: "공중", grab: "잡힐 때" };
-  var ROWS = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
-  var ROW_LABELS = { body: "몸통", eyes: "눈", leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리" };
+
   var LABEL_W = 46, RULER_H = 16, ROW_H = 13, PAD_R = 8;
   var KEY_HIT = 6, MAX_KEYS = 60;
   var MIN_VIEW_MS = 100, TIME_ZOOM_STEP = 1.25; // 시간 막대를 가장 크게 확대하면 0.1초가 한 화면
@@ -31,7 +30,8 @@
   P.initTimeline = function () {
     var self = this;
     // view: 시간 막대에 보이는 구간 {start, span} (ms), null = 전체
-    this.tl = { state: "idle", playhead: 0, playing: false, drag: null, view: null };
+    // rowOffset: 부위가 많아 줄이 넘칠 때 위에서 몇 줄을 넘겼는지
+    this.tl = { state: "idle", playhead: 0, playing: false, drag: null, view: null, rowOffset: 0 };
     this.tlCanvas = document.getElementById("tl-canvas");
 
     var states = document.getElementById("tl-states");
@@ -164,7 +164,12 @@
       event.preventDefault();
       var dy = event.type === "wheel" ? event.deltaY : -event.wheelDelta;
       var dx = event.type === "wheel" ? (event.deltaX || 0) : 0;
-      if (event.shiftKey || Math.abs(dx) > Math.abs(dy)) {
+      if (self.timelinePointer(event).x < LABEL_W) {
+        // 이름 칸: 줄 위아래로
+        if (dy) {
+          self.timelineScrollRows(dy > 0 ? 1 : -1);
+        }
+      } else if (event.shiftKey || Math.abs(dx) > Math.abs(dy)) {
         var amount = event.shiftKey ? dy : dx;
         if (amount) {
           self.timelineScroll(amount > 0 ? 1 : -1);
@@ -431,7 +436,7 @@
     var keyHasPhoto = !!(key && key.photo);
     var photo = document.getElementById("tl-photo");
     BV.setText(photo, keyHasPhoto ? "사진 바꾸기" : "사진 넣기");
-    photo.title = (tl.playhead / 1000).toFixed(2) + "초부터 " + ROW_LABELS[this.selected] + " 사진 바꾸기 (키에 저장)";
+    photo.title = (tl.playhead / 1000).toFixed(2) + "초부터 " + BV.partName(this.layout, this.selected) + " 사진 바꾸기 (키에 저장)";
     document.getElementById("tl-photo-remove").disabled = !keyHasPhoto;
     var ease = document.getElementById("tl-ease");
     ease.checked = key ? key.ease : true;
@@ -496,6 +501,15 @@
     var w = c.w, h = c.h;
     var clip = this.clip();
     var self = this;
+    // 고른 부위 줄이 보이게 넘긴다
+    var allRows = this.timelineRows();
+    var rowCount = this.timelineRowCount(h);
+    var at = allRows.indexOf(this.selected);
+    var maxOffset = Math.max(0, allRows.length - rowCount);
+    if (at >= 0 && (at < this.tl.rowOffset || at >= this.tl.rowOffset + rowCount)) {
+      this.tl.rowOffset = at < this.tl.rowOffset ? at : at - rowCount + 1;
+    }
+    this.tl.rowOffset = clamp(this.tl.rowOffset, 0, maxOffset);
     ctx.save();
     ctx.scale(d, d);
     // 이름 칸
@@ -534,8 +548,10 @@
     ctx.restore();
     ctx.fillStyle = "#26221e";
     ctx.fillRect(0, RULER_H - 1, w, 1);
-    // 부위 줄
-    ROWS.forEach(function (part, i) {
+    // 부위 줄 (화면에 있는 부위, 많으면 이름 칸에서 휠로 위아래로 넘겨 본다)
+    var rows = this.timelineRows();
+    var offset = this.tl.rowOffset;
+    rows.slice(offset, offset + this.timelineRowCount(h)).forEach(function (part, i) {
       var y = RULER_H + i * ROW_H;
       if (part === self.selected) {
         ctx.fillStyle = "rgba(79, 195, 247, 0.18)";
@@ -545,7 +561,11 @@
       ctx.fillRect(LABEL_W, y + ROW_H - 1, w - LABEL_W, 1);
       ctx.fillStyle = part === self.selected ? "#26221e" : "#7d7468";
       ctx.font = (part === self.selected ? "bold " : "") + "10px 'Malgun Gothic', sans-serif";
-      ctx.fillText(ROW_LABELS[part], 5, y + ROW_H - 3);
+      var label = BV.partName(self.layout, part);
+      while (label.length > 1 && ctx.measureText(label).width > LABEL_W - 8) {
+        label = label.slice(0, -1);
+      }
+      ctx.fillText(label, 5, y + ROW_H - 3);
       // 키 사이를 선으로 이어서 움직이는 구간이 보이게 (시간 쪽 밖은 잘라낸다)
       ctx.save();
       ctx.beginPath();
@@ -587,6 +607,12 @@
     });
     ctx.fillStyle = "#26221e";
     ctx.fillRect(LABEL_W - 1, 0, 1, h);
+    if (maxOffset > 0) {
+      ctx.fillStyle = "#7d7468";
+      ctx.font = "8px sans-serif";
+      ctx.fillText(this.tl.rowOffset > 0 ? "▲" : "", LABEL_W - 9, RULER_H + 7);
+      ctx.fillText(this.tl.rowOffset < maxOffset ? "▼" : "", LABEL_W - 9, h - 2);
+    }
     ctx.save();
     ctx.beginPath();
     ctx.rect(LABEL_W, 0, w - LABEL_W, h);
@@ -628,8 +654,25 @@
   };
 
   P.rowAt = function (y) {
-    var i = Math.floor((y - RULER_H) / ROW_H);
-    return i >= 0 && i < ROWS.length ? ROWS[i] : null;
+    var rows = this.timelineRows();
+    var i = Math.floor((y - RULER_H) / ROW_H) + this.tl.rowOffset;
+    return y >= RULER_H && i >= 0 && i < rows.length ? rows[i] : null;
+  };
+
+  /** 시간 막대 줄 = 화면에 있는 부위 (부위 고르기 순서). */
+  P.timelineRows = function () {
+    return this.pickerKeys();
+  };
+
+  P.timelineRowCount = function (height) {
+    return Math.max(1, Math.floor((height - RULER_H) / ROW_H));
+  };
+
+  /** 줄을 한 줄씩 위아래로 (이름 칸에서 휠). */
+  P.timelineScrollRows = function (direction) {
+    var max = Math.max(0, this.timelineRows().length - this.timelineRowCount(this.tlCanvas.clientHeight));
+    this.tl.rowOffset = clamp(this.tl.rowOffset + direction, 0, max);
+    this.drawTimeline();
   };
 
   P.timelineMouseDown = function (event) {

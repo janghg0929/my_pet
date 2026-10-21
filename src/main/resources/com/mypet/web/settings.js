@@ -93,7 +93,7 @@
       return;
     }
     var names = [];
-    window.BitView.PART_KEYS.forEach(function (key) {
+    window.BitView.partKeys(layout).forEach(function (key) {
       var part = layout[key];
       if (part.image) {
         names.push(part.image);
@@ -125,6 +125,13 @@
       }
     });
   }
+
+  // (Java 가 부름) 이름 입력 창의 대답 (취소면 null)
+  window.bitTextAnswer = function (text) {
+    if (editor && editor.onTextAnswer) {
+      editor.onTextAnswer(text);
+    }
+  };
 
   // (Java 가 부름) 고급 시간 막대에서 고른 키 사진 (취소면 null)
   window.bitPickedImage = function (name) {

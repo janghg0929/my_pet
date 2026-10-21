@@ -65,7 +65,22 @@
       <canvas id="parts-canvas" class="parts-canvas" aria-label="비트 모습 편집"></canvas>
       <span class="stage-hint" id="parts-subtitle">끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전</span>
     </section>
-    <div class="part-tabs part-picker" id="parts-tabs"></div>
+    <!-- 화면에 있는 부위 (많으면 옆으로 넘겨 보기) + 부위 추가/빼기 -->
+    <div class="part-picker-row">
+      <div class="part-picker" id="parts-tabs"></div>
+      <button class="btn btn-small" id="parts-add" title="부위 추가: 새로 만들기 / 가져오기">＋ 부위</button>
+      <button class="btn btn-small btn-danger" id="parts-remove" title="고른 부위를 화면에서 빼기 (가져오기로 다시 넣을 수 있어요)">빼기</button>
+    </div>
+    <!-- 부위 추가 창 (미리보기 위에 겹쳐 뜬다) -->
+    <div class="box parts-add-panel" id="parts-add-panel" hidden>
+      <div class="add-head">
+        <b>부위 추가</b>
+        <button class="btn btn-small" id="parts-add-close">닫기</button>
+      </div>
+      <button class="btn btn-primary add-new" id="parts-new">＋ 새로 만들기</button>
+      <p class="add-title">가져오기</p>
+      <div class="add-list" id="parts-library"></div>
+    </div>
     <!-- 일반과 고급을 같은 자리에 겹쳐 둔다 (창 크기 그대로) -->
     <div class="parts-panels">
     <div id="parts-basic">

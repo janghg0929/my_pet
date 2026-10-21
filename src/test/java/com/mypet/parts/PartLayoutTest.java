@@ -91,6 +91,36 @@ class PartLayoutTest {
 	}
 
 	@Test
+	void customPartsRoundTripAndHiddenPartsDoNotCount() {
+		Object json = Json.read("{\"c_tail1\": {\"name\": \"  꼬리   \", \"x\": 40, \"y\": 20, \"w\": 6, \"h\": 3},"
+			+ " \"c_bad/../x\": {\"name\": \"나쁨\"}, \"leftArm\": {\"visible\": false},"
+			+ " \"timeline\": {\"idle\": {\"tracks\": {\"c_tail1\": [{\"t\": 0, \"rotation\": 30}], \"tail\": [{\"t\": 0}]}}}}");
+		PartLayout layout = PartLayout.fromJson(json);
+		assertEquals(java.util.List.of("c_tail1"), layout.customKeys());
+		PartLayout.Part tail = layout.get("c_tail1");
+		assertEquals("꼬리", tail.name);
+		assertEquals(PartLayout.SHAPE_DOT, tail.shape); // 만든 부위는 기본이 검은 점
+		assertTrue(tail.visible);
+		assertEquals("꼬리", layout.nameOf("c_tail1"));
+		assertEquals("왼팔", layout.nameOf(PartLayout.LEFT_ARM));
+		assertFalse(layout.leftArm().visible);
+		assertEquals(1, layout.timeline.clips.get(PartAnimation.IDLE).track("c_tail1").size());
+		assertTrue(PartMotion.typesFor("c_tail1").contains(PartMotion.BLINK)); // 만든 부위는 움직임 다 된다
+
+		// 화면에서 뺀 왼팔은 크기 계산에서 빠진다 (왼팔이 맨 왼쪽이었다)
+		assertEquals(0, layout.bounds(0).minX());
+		assertEquals(53, layout.bounds(0).maxX()); // 오른팔 45+8 (꼬리 40+6 보다 바깥)
+		PartLayout again = PartLayout.fromJson(Json.read(Json.write(layout.toJson())));
+		assertEquals(Json.write(layout.toJson()), Json.write(again.toJson()));
+
+		// 새로 만들기: 몸통 가운데 4x4 점
+		PartLayout.Part made = PartLayout.newCustomPart(layout.body(), "점");
+		assertEquals(20, made.x);
+		assertEquals(12, made.y);
+		assertEquals(4, made.w);
+	}
+
+	@Test
 	void jsonRoundTripKeepsEverything() {
 		PartLayout layout = PartLayout.defaults();
 		layout.symmetric = false;

@@ -928,6 +928,13 @@ final class PetApp implements SettingsHost {
 		return answer == null ? null : SavedLook.cleanName(String.valueOf(answer));
 	}
 
+	@Override
+	public String askText(String title, String initial) {
+		Object answer = JOptionPane.showInputDialog(settingsDialog, "이름 (" + PartLayout.MAX_NAME_LENGTH + "자까지)", title,
+			JOptionPane.PLAIN_MESSAGE, null, null, initial);
+		return answer == null ? null : String.valueOf(answer);
+	}
+
 	/** 저장한 모습에 넣을 몸 색 (기본 색이면 null). */
 	private String currentLookColor() {
 		return DEFAULT_CHARACTER_COLOR.equalsIgnoreCase(baseCharacterColor) ? null : baseCharacterColor;
@@ -2028,13 +2035,19 @@ final class PetApp implements SettingsHost {
 		double bodyLeft = bodyLeft();
 		double bodyTop = bodyTop();
 
-		// 몸통
-		drawPart(g, body, bodyLeft, bodyTop, color, motionOf(PartLayout.BODY), photoOf(PartLayout.BODY));
+		// 몸통 (화면에서 뺀 부위는 그리지 않는다)
+		if (body.visible) {
+			drawPart(g, body, bodyLeft, bodyTop, color, motionOf(PartLayout.BODY), photoOf(PartLayout.BODY));
+		}
 		// 다리
-		drawPart(g, leftLeg, charOriginX + leftLeg.x + limbOffsetX - limbSwayX, charOriginY + leftLeg.y + limbOffsetY, color,
-			motionOf(PartLayout.LEFT_LEG), photoOf(PartLayout.LEFT_LEG));
-		drawPart(g, rightLeg, charOriginX + rightLeg.x + limbOffsetX + limbSwayX, charOriginY + rightLeg.y + limbOffsetY, color,
-			motionOf(PartLayout.RIGHT_LEG), photoOf(PartLayout.RIGHT_LEG));
+		if (leftLeg.visible) {
+			drawPart(g, leftLeg, charOriginX + leftLeg.x + limbOffsetX - limbSwayX, charOriginY + leftLeg.y + limbOffsetY, color,
+				motionOf(PartLayout.LEFT_LEG), photoOf(PartLayout.LEFT_LEG));
+		}
+		if (rightLeg.visible) {
+			drawPart(g, rightLeg, charOriginX + rightLeg.x + limbOffsetX + limbSwayX, charOriginY + rightLeg.y + limbOffsetY, color,
+				motionOf(PartLayout.RIGHT_LEG), photoOf(PartLayout.RIGHT_LEG));
+		}
 
 		boolean pixelHeartVisible = isPixelHeartEnabled();
 		if (pixelHeartVisible) {
@@ -2043,7 +2056,16 @@ final class PetApp implements SettingsHost {
 		if (isMediaHeadsetEnabled()) {
 			AppearanceRendering.renderHeadset(g, bodyLeft, bodyTop, body.w, body.h, headsetStroke);
 		}
-		paintEyes(g);
+		if (layout.eyes().visible) {
+			paintEyes(g);
+		}
+		// 만든 부위: 눈 다음, 팔 앞
+		for (String key : layout.customKeys()) {
+			PartLayout.Part part = layout.get(key);
+			if (part.visible) {
+				drawPart(g, part, charOriginX + part.x, charOriginY + part.y, color, motionOf(key), photoOf(key));
+			}
+		}
 		if (pixelHeartVisible) {
 			AppearanceRendering.renderPixelHeartShine(g, bodyLeft, bodyTop, body.w, eyeShapeScale);
 		}
@@ -2052,12 +2074,16 @@ final class PetApp implements SettingsHost {
 		}
 
 		// 팔
-		drawPart(g, leftArm, charOriginX + leftArm.x + limbOffsetX + limbSwayX,
-			charOriginY + leftArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.LEFT_ARM),
-			photoOf(PartLayout.LEFT_ARM));
-		drawPart(g, rightArm, charOriginX + rightArm.x + limbOffsetX - limbSwayX,
-			charOriginY + rightArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.RIGHT_ARM),
-			photoOf(PartLayout.RIGHT_ARM));
+		if (leftArm.visible) {
+			drawPart(g, leftArm, charOriginX + leftArm.x + limbOffsetX + limbSwayX,
+				charOriginY + leftArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.LEFT_ARM),
+				photoOf(PartLayout.LEFT_ARM));
+		}
+		if (rightArm.visible) {
+			drawPart(g, rightArm, charOriginX + rightArm.x + limbOffsetX - limbSwayX,
+				charOriginY + rightArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.RIGHT_ARM),
+				photoOf(PartLayout.RIGHT_ARM));
+		}
 
 		if (isBrowserMonocleEnabled()) {
 			AppearanceRendering.renderMonocle(g, charOriginX + rightArm.right(), charOriginY + rightArm.y + armLiftCurrent,
@@ -2094,7 +2120,9 @@ final class PetApp implements SettingsHost {
 			double h = part.h * motion.scaleY();
 			double left = px + (x - px) * motion.scaleX() + motion.dx();
 			double top = py + (y - py) * motion.scaleY() + motion.dy();
-			if (image == null) {
+			if (image == null && PartLayout.SHAPE_DOT.equals(part.shape)) {
+				Draw.oval(g, left, top, left + w, top + h, "#000000", null, 0);
+			} else if (image == null) {
 				Draw.rect(g, left, top, left + w, top + h, color, "#000000", border);
 			} else {
 				drawImage(g, image, left, top, w, h, flip);
@@ -2113,6 +2141,10 @@ final class PetApp implements SettingsHost {
 			// 돌린 네모는 계단처럼 보이지 않게 부드럽게 그린다 (바깥을 테두리 색으로 채우고 안쪽을 몸 색으로)
 			gr.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 			gr.setColor(Color.BLACK);
+			if (PartLayout.SHAPE_DOT.equals(part.shape)) {
+				gr.fill(new java.awt.geom.Ellipse2D.Double(left, top, part.w, part.h));
+				return;
+			}
 			gr.fill(new java.awt.geom.Rectangle2D.Double(left, top, part.w, part.h));
 			if (part.w > border * 2 && part.h > border * 2) {
 				gr.setColor(Draw.color(color));

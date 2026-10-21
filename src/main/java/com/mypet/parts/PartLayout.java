@@ -18,8 +18,15 @@ public final class PartLayout {
 	public static final String LEFT_LEG = "leftLeg";
 	public static final String RIGHT_LEG = "rightLeg";
 	public static final String EYES = "eyes";
-	/** 그리는 순서와 같은 순서. */
+	/** 기본 부위 (그리는 순서와 같은 순서). 사용자가 만든 부위는 "c_" 로 시작하는 이름으로 더 붙는다. */
 	public static final List<String> KEYS = List.of(BODY, LEFT_ARM, RIGHT_ARM, LEFT_LEG, RIGHT_LEG, EYES);
+	/** 사용자가 만든 부위 이름 앞머리, 최대 개수. */
+	public static final String CUSTOM_PREFIX = "c_";
+	public static final int MAX_CUSTOM = 20;
+	public static final int MAX_NAME_LENGTH = 20;
+	/** 사진이 없을 때 모양: 네모(몸 색 + 외곽선) 또는 검은 점(새로 만든 부위). */
+	public static final String SHAPE_RECT = "rect";
+	public static final String SHAPE_DOT = "dot";
 
 	/** 눈 사진을 따로 넣을 수 있는 표정. */
 	public static final String EXPR_NEUTRAL = "neutral";
@@ -45,8 +52,14 @@ public final class PartLayout {
 	private static final int MAX_SIZE = 400;
 	private static final int MAX_OFFSET = 400;
 
-	/** 부위 하나. 사진이 없으면 네모(몸 색 + 외곽선)로 그린다. */
+	/** 부위 하나. 사진이 없으면 네모(몸 색 + 외곽선) 또는 검은 점으로 그린다. */
 	public static final class Part {
+		/** 보이는 이름 (null 이면 기본 부위 이름). */
+		public String name;
+		/** 화면에 있는지 (빼면 false: 설정은 남아 있어서 "가져오기"로 다시 넣을 수 있다). */
+		public boolean visible = true;
+		/** 사진이 없을 때 모양 ({@link #SHAPE_RECT} / {@link #SHAPE_DOT}). */
+		public String shape = SHAPE_RECT;
 		public int x;
 		public int y;
 		public int w;
@@ -73,6 +86,9 @@ public final class PartLayout {
 
 		Part copy() {
 			Part copy = new Part(x, y, w, h);
+			copy.name = name;
+			copy.visible = visible;
+			copy.shape = shape;
 			copy.image = image;
 			copy.flip = flip;
 			copy.rotation = rotation;
@@ -177,6 +193,63 @@ public final class PartLayout {
 		return parts.get(key);
 	}
 
+	/** 모든 부위 이름 (기본 부위 + 만든 부위, 화면에서 뺀 것도). */
+	public List<String> keys() {
+		return new java.util.ArrayList<>(parts.keySet());
+	}
+
+	/** 만든 부위 이름들 (만든 순서). */
+	public List<String> customKeys() {
+		List<String> keys = new java.util.ArrayList<>();
+		for (String key : parts.keySet()) {
+			if (isCustom(key)) {
+				keys.add(key);
+			}
+		}
+		return keys;
+	}
+
+	/** 사용자가 만든 부위 이름인지 ("c_" + 영문/숫자). */
+	public static boolean isCustom(String key) {
+		return key != null && key.matches("c_[A-Za-z0-9]{1,16}");
+	}
+
+	/** 새로 만든 부위: 몸통 가운데의 작은 검은 점. */
+	public static Part newCustomPart(Part body, String name) {
+		Part part = new Part(body.x + body.w / 2 - 2, body.y + body.h / 2 - 2, 4, 4);
+		part.shape = SHAPE_DOT;
+		part.name = cleanName(name);
+		return part;
+	}
+
+	/** 부위 이름: 정한 이름, 없으면 기본 부위 이름 (만든 부위는 "새 부위"). */
+	public String nameOf(String key) {
+		Part part = parts.get(key);
+		if (part != null && part.name != null) {
+			return part.name;
+		}
+		return switch (key) {
+			case BODY -> "몸통";
+			case LEFT_ARM -> "왼팔";
+			case RIGHT_ARM -> "오른팔";
+			case LEFT_LEG -> "왼다리";
+			case RIGHT_LEG -> "오른다리";
+			case EYES -> "눈";
+			default -> "새 부위";
+		};
+	}
+
+	static String cleanName(Object value) {
+		if (!(value instanceof String text)) {
+			return null;
+		}
+		String name = text.strip().replaceAll("\\s+", " ");
+		if (name.isEmpty()) {
+			return null;
+		}
+		return name.length() > MAX_NAME_LENGTH ? name.substring(0, MAX_NAME_LENGTH) : name;
+	}
+
 	public Part body() {
 		return parts.get(BODY);
 	}
@@ -260,8 +333,14 @@ public final class PartLayout {
 		int minY = Integer.MAX_VALUE;
 		int maxX = Integer.MIN_VALUE;
 		int maxY = Integer.MIN_VALUE;
+		boolean any = false;
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
+			// 화면에서 뺀 부위는 빼고 잰다 (다 뺐으면 몸통 자리로)
+			if (!part.visible && !(BODY.equals(entry.getKey()) && !anyVisible())) {
+				continue;
+			}
+			any = true;
 			boolean arm = LEFT_ARM.equals(entry.getKey()) || RIGHT_ARM.equals(entry.getKey());
 			double[] half = part.halfExtents();
 			double cx = part.x + part.w / 2.0;
@@ -276,7 +355,19 @@ public final class PartLayout {
 			minY = Math.min(minY, arm ? top - armRaise : top);
 			maxY = Math.max(maxY, bottom);
 		}
+		if (!any) {
+			return new Bounds(0, 0, 44, 28);
+		}
 		return new Bounds(minX, minY, maxX, maxY);
+	}
+
+	private boolean anyVisible() {
+		for (Part part : parts.values()) {
+			if (part.visible) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -291,6 +382,9 @@ public final class PartLayout {
 		double maxY = base.maxY();
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
+			if (!part.visible) {
+				continue;
+			}
 			double[] clipAlways = timeline.reach(entry.getKey(), true);
 			double[] clipMost = timeline.reach(entry.getKey(), false);
 			boolean clipped = clipAlways[0] + clipAlways[1] + clipAlways[2] + clipAlways[3] > 0 || clipAlways[4] != 1
@@ -395,6 +489,9 @@ public final class PartLayout {
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
 			Map<String, Object> item = new LinkedHashMap<>();
+			item.put("name", part.name);
+			item.put("visible", part.visible);
+			item.put("shape", part.shape);
 			item.put("x", part.x);
 			item.put("y", part.y);
 			item.put("w", part.w);
@@ -431,11 +528,25 @@ public final class PartLayout {
 			layout.symmetric = flag;
 		}
 		layout.timeline = PartTimeline.fromJson(root.get("timeline"));
-		for (String key : KEYS) {
+		// 만든 부위: "c_…" 이름으로 (최대 MAX_CUSTOM 개)
+		List<String> keys = new java.util.ArrayList<>(KEYS);
+		for (Object rawKey : root.keySet()) {
+			if (rawKey instanceof String key && isCustom(key) && root.get(key) instanceof Map<?, ?>
+				&& keys.size() - KEYS.size() < MAX_CUSTOM) {
+				keys.add(key);
+				layout.parts.put(key, newCustomPart(layout.body(), null));
+			}
+		}
+		for (String key : keys) {
 			if (!(root.get(key) instanceof Map<?, ?> item)) {
 				continue;
 			}
 			Part part = layout.parts.get(key);
+			part.name = cleanName(item.get("name"));
+			part.visible = !Boolean.FALSE.equals(item.get("visible"));
+			if (item.get("shape") instanceof String shape && (SHAPE_RECT.equals(shape) || SHAPE_DOT.equals(shape))) {
+				part.shape = shape;
+			}
 			part.x = clampInt(item.get("x"), part.x, -MAX_OFFSET, MAX_OFFSET);
 			part.y = clampInt(item.get("y"), part.y, -MAX_OFFSET, MAX_OFFSET);
 			part.w = clampInt(item.get("w"), part.w, MIN_SIZE, MAX_SIZE);

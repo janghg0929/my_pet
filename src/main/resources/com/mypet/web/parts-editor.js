@@ -6,11 +6,11 @@
 (function () {
   "use strict";
 
-  var PART_LABELS = { body: "몸통", leftArm: "왼팔", rightArm: "오른팔", leftLeg: "왼다리", rightLeg: "오른다리", eyes: "눈" };
+  // 부위 고르기 순서 (만든 부위는 뒤에 붙는다)
   var PART_ORDER = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
+  var MAX_CUSTOM = 20;
   var EXPRESSIONS = [{ key: "neutral", label: "평소" }, { key: "grab", label: "잡혔을 때" }, { key: "fall", label: "떨어질 때" }];
-  // 클릭했을 때 위에 그려진 부위부터 고른다
-  var HIT_ORDER = ["rightArm", "leftArm", "eyes", "rightLeg", "leftLeg", "body"];
+
   var MIRROR = { leftArm: "rightArm", rightArm: "leftArm", leftLeg: "rightLeg", rightLeg: "leftLeg" };
   var HANDLE = 9; // 크기 조절 손잡이 (화면 px)
   var ROTATE_GAP = 16; // 회전 손잡이가 부위 위로 떨어진 거리 (화면 px)
@@ -95,15 +95,7 @@
 
   PartsEditor.prototype.build = function () {
     var self = this;
-    var tabs = document.getElementById("parts-tabs");
-    PART_ORDER.forEach(function (key) {
-      var button = document.createElement("button");
-      button.className = "seg";
-      button.textContent = PART_LABELS[key];
-      button.setAttribute("data-part", key);
-      button.addEventListener("click", function () { self.select(key); });
-      tabs.appendChild(button);
-    });
+    this.buildPartManager();
     var eyeTabs = document.getElementById("parts-eye-tabs");
     EXPRESSIONS.forEach(function (expr) {
       var button = document.createElement("button");
@@ -218,6 +210,231 @@
         self.resetZoom();
       }
     });
+  };
+
+  // ---------------------------------------------------------------- 부위 추가/빼기
+
+  /** 부위 고르기 순서의 화면에 있는 부위들 (기본 부위 → 만든 부위). */
+  PartsEditor.prototype.pickerKeys = function () {
+    var layout = this.layout;
+    return PART_ORDER.concat(window.BitView.customKeys(layout)).filter(function (key) {
+      return layout[key] && layout[key].visible !== false;
+    });
+  };
+
+  /** 눌렀을 때 고르는 순서: 위에 그려진 부위부터 (팔 → 만든 부위 → 눈 → 다리 → 몸통). */
+  PartsEditor.prototype.hitOrder = function () {
+    var layout = this.layout;
+    return ["rightArm", "leftArm"].concat(window.BitView.customKeys(layout).reverse(), ["eyes", "rightLeg", "leftLeg", "body"])
+      .filter(function (key) { return layout[key] && layout[key].visible !== false; });
+  };
+
+  PartsEditor.prototype.buildPartManager = function () {
+    var self = this;
+    // 부위 탭이 넘치면 휠로 옆으로 넘긴다 (스크롤 막대는 숨김)
+    var tabs = document.getElementById("parts-tabs");
+    var onWheel = function (event) {
+      var delta = event.type === "wheel" ? (event.deltaY || event.deltaX) : -event.wheelDelta;
+      if (delta && tabs.scrollWidth > tabs.clientWidth) {
+        event.preventDefault();
+        tabs.scrollLeft += delta > 0 ? 40 : -40;
+      }
+    };
+    tabs.addEventListener("wheel", onWheel);
+    var panel = document.getElementById("parts-add-panel");
+    document.getElementById("parts-add").addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+      self.openMenu = null;
+      self.renderLibrary();
+    });
+    document.getElementById("parts-add-close").addEventListener("click", function () {
+      panel.hidden = true;
+    });
+    document.getElementById("parts-remove").addEventListener("click", function () {
+      var part = self.part();
+      if (!part || part.visible === false) {
+        return;
+      }
+      part.visible = false; // 설정은 남겨 둔다: 가져오기로 다시 넣으면 그대로
+      self.selected = self.pickerKeys()[0] || "body";
+      self.afterPartsChanged();
+    });
+    document.getElementById("parts-new").addEventListener("click", function () {
+      if (window.BitView.customKeys(self.layout).length >= MAX_CUSTOM) {
+        return;
+      }
+      self.pendingText = { action: "new" };
+      self.send("askText", "새 부위 만들기", "부위 " + (window.BitView.customKeys(self.layout).length + 1));
+    });
+  };
+
+  /** 화면의 부위 탭: 부위가 바뀔 때만 새로 만든다 (누르는 중인 버튼이 사라지지 않게). */
+  PartsEditor.prototype.renderPartTabs = function () {
+    var self = this;
+    var keys = this.pickerKeys();
+    if (keys.indexOf(this.selected) < 0 && keys.length) {
+      this.selected = keys[0];
+    }
+    var tabs = document.getElementById("parts-tabs");
+    var signature = JSON.stringify(keys.map(function (key) { return [key, window.BitView.partName(self.layout, key)]; }));
+    if (tabs.getAttribute("data-parts") !== signature) {
+      tabs.setAttribute("data-parts", signature);
+      tabs.innerHTML = "";
+      keys.forEach(function (key) {
+        var button = document.createElement("button");
+        button.className = "seg";
+        button.textContent = window.BitView.partName(self.layout, key);
+        button.setAttribute("data-part", key);
+        button.addEventListener("click", function () { self.select(key); });
+        tabs.appendChild(button);
+      });
+    }
+    Array.prototype.forEach.call(tabs.querySelectorAll(".seg"), function (button) {
+      var selected = button.getAttribute("data-part") === self.selected;
+      button.classList.toggle("selected", selected);
+      if (selected && button.scrollIntoView && (button.offsetLeft < tabs.scrollLeft
+        || button.offsetLeft + button.offsetWidth > tabs.scrollLeft + tabs.clientWidth)) {
+        tabs.scrollLeft = button.offsetLeft - 4;
+      }
+    });
+    document.getElementById("parts-remove").disabled = !keys.length;
+    var panel = document.getElementById("parts-add-panel");
+    if (!panel.hidden) {
+      this.renderLibrary();
+    }
+  };
+
+  /** 가져오기 목록: 기본 부위 + 만든 부위, 화면에 없으면 [가져오기], ⋮ 로 이름 수정·삭제. */
+  PartsEditor.prototype.renderLibrary = function () {
+    var self = this;
+    var list = document.getElementById("parts-library");
+    var keys = PART_ORDER.concat(window.BitView.customKeys(this.layout));
+    var signature = JSON.stringify([keys.map(function (key) {
+      return [key, window.BitView.partName(self.layout, key), self.layout[key].visible !== false];
+    }), this.openMenu, this.armedDelete]);
+    if (list.getAttribute("data-library") === signature) {
+      return;
+    }
+    list.setAttribute("data-library", signature);
+    list.innerHTML = "";
+    keys.forEach(function (key) {
+      var part = self.layout[key];
+      var row = document.createElement("div");
+      row.className = "add-row";
+      var name = document.createElement("span");
+      name.className = "add-name";
+      name.textContent = window.BitView.partName(self.layout, key);
+      row.appendChild(name);
+      if (part.visible !== false) {
+        var stateText = document.createElement("span");
+        stateText.className = "add-state";
+        stateText.textContent = "화면에 있음";
+        row.appendChild(stateText);
+      } else {
+        var bring = document.createElement("button");
+        bring.className = "btn btn-small btn-primary";
+        bring.textContent = "가져오기";
+        bring.addEventListener("click", function () {
+          part.visible = true;
+          self.selected = key;
+          document.getElementById("parts-add-panel").hidden = true;
+          self.afterPartsChanged();
+        });
+        row.appendChild(bring);
+      }
+      var more = document.createElement("button");
+      more.className = "btn btn-small add-more";
+      more.title = "이름 수정, 삭제";
+      more.addEventListener("click", function () {
+        self.openMenu = self.openMenu === key ? null : key;
+        self.armedDelete = null;
+        self.renderLibrary();
+      });
+      row.appendChild(more);
+      if (self.openMenu === key) {
+        var menu = document.createElement("div");
+        menu.className = "add-menu";
+        var rename = document.createElement("button");
+        rename.className = "btn btn-small";
+        rename.textContent = "이름 수정";
+        rename.addEventListener("click", function () {
+          self.pendingText = { action: "rename", key: key };
+          self.openMenu = null;
+          self.send("askText", "부위 이름 수정", window.BitView.partName(self.layout, key));
+          self.renderLibrary();
+        });
+        menu.appendChild(rename);
+        var remove = document.createElement("button");
+        remove.className = "btn btn-small btn-danger";
+        var custom = window.BitView.isCustom(key);
+        remove.textContent = self.armedDelete === key ? "정말 삭제?" : "삭제";
+        remove.disabled = !custom;
+        remove.title = custom ? "이 부위를 완전히 지워요 (되돌리기 Ctrl+Z)" : "기본 부위는 지울 수 없어요 (화면에서 빼기만)";
+        remove.addEventListener("click", function () {
+          if (self.armedDelete !== key) {
+            self.armedDelete = key;
+            self.renderLibrary();
+            return;
+          }
+          self.deletePart(key);
+        });
+        menu.appendChild(remove);
+        row.appendChild(menu);
+      }
+      list.appendChild(row);
+    });
+    document.getElementById("parts-new").disabled = window.BitView.customKeys(this.layout).length >= MAX_CUSTOM;
+  };
+
+  /** 만든 부위를 완전히 지운다 (시간 막대 키까지). */
+  PartsEditor.prototype.deletePart = function (key) {
+    delete this.layout[key];
+    var timeline = this.layout.timeline;
+    window.BitView.STATES.forEach(function (state) {
+      if (timeline && timeline[state]) {
+        delete timeline[state].tracks[key];
+      }
+    });
+    this.openMenu = null;
+    this.armedDelete = null;
+    if (this.selected === key) {
+      this.selected = this.pickerKeys()[0] || "body";
+    }
+    this.afterPartsChanged();
+  };
+
+  /** (Java 가 부름) 이름 입력 창의 대답: 새 부위 만들기 / 이름 수정. 취소면 null. */
+  PartsEditor.prototype.onTextAnswer = function (text) {
+    var pending = this.pendingText;
+    this.pendingText = null;
+    var name = text == null ? "" : String(text).replace(/\s+/g, " ").trim().slice(0, 20);
+    if (!pending || !name) {
+      return;
+    }
+    if (pending.action === "new") {
+      var key;
+      do {
+        key = "c_" + Math.random().toString(36).slice(2, 10).replace(/[^a-z0-9]/g, "a");
+      } while (this.layout[key]);
+      var body = this.layout.body;
+      this.layout[key] = window.BitView.normalizePart(key, {
+        x: Math.round(body.x + body.w / 2 - 2), y: Math.round(body.y + body.h / 2 - 2), w: 4, h: 4,
+        shape: "dot", name: name, image: null, flip: false
+      });
+      this.selected = key;
+      document.getElementById("parts-add-panel").hidden = true;
+    } else if (pending.action === "rename" && this.layout[pending.key]) {
+      this.layout[pending.key].name = name;
+    }
+    this.afterPartsChanged();
+  };
+
+  /** 부위를 넣고 빼고 지운 뒤: 화면을 다시 그리고 저장. */
+  PartsEditor.prototype.afterPartsChanged = function () {
+    this.view = this.zoomed ? this.view : null;
+    this.refreshControls();
+    this.draw();
+    this.commit(0);
   };
 
   // ---------------------------------------------------------------- 확대
@@ -567,11 +784,12 @@
   };
 
   PartsEditor.prototype.refreshControls = function () {
-    var part = this.part();
-    var tabs = document.querySelectorAll("#parts-tabs .seg");
-    for (var i = 0; i < tabs.length; i++) {
-      tabs[i].classList.toggle("selected", tabs[i].getAttribute("data-part") === this.selected);
+    // 고른 부위가 지워졌거나(되돌리기 등) 화면에서 빠졌으면 화면에 있는 첫 부위로
+    if (!this.layout[this.selected] || this.layout[this.selected].visible === false) {
+      this.selected = this.pickerKeys()[0] || "body";
     }
+    this.renderPartTabs();
+    var part = this.part();
     var eyeTabs = document.getElementById("parts-eye-tabs");
     // 표정 사진 줄은 눈을 골랐을 때만 (자리는 늘 있다)
     setOff("parts-eye-tabs", this.selected !== "eyes");
@@ -591,7 +809,7 @@
     });
     document.getElementById("parts-symmetric").checked = !!this.layout.symmetric;
     var photo = document.getElementById("parts-photo");
-    var label = this.selected === "eyes" ? "'" + labelOf(this.expression) + "' 눈 사진" : PART_LABELS[this.selected] + " 사진";
+    var label = this.selected === "eyes" ? "'" + labelOf(this.expression) + "' 눈 사진" : window.BitView.partName(this.layout, this.selected) + " 사진";
     window.BitView.setText(photo, (this.hasImage() ? "바꾸기: " : "넣기: ") + label);
     document.getElementById("parts-photo-remove").disabled = !this.hasImage();
 
@@ -891,12 +1109,13 @@
     if ((this.shaping() || this.advanced()) && pointIn(this.handleRect(selected), q.x, q.y)) {
       return { key: this.selected, resize: true };
     }
-    for (var i = 0; i < HIT_ORDER.length; i++) {
-      var r = this.partRect(HIT_ORDER[i], pose);
+    var order = this.hitOrder();
+    for (var i = 0; i < order.length; i++) {
+      var r = this.partRect(order[i], pose);
       var local = toLocal(r, x, y);
       // 아주 작은 부위도 잡을 수 있게 조금 넓게 본다
       if (pointIn({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, local.x, local.y)) {
-        return { key: HIT_ORDER[i] };
+        return { key: order[i] };
       }
     }
     return null;

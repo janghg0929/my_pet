@@ -22,7 +22,8 @@ public final class PartMotion {
 		return switch (partKey) {
 			case PartLayout.EYES -> List.of(NONE, BLINK, SWAY, BOB);
 			case PartLayout.BODY -> List.of(NONE, BREATHE, BOB, SWAY, SWING);
-			default -> List.of(NONE, SWING, BOB, SWAY); // 팔, 다리
+			case PartLayout.LEFT_ARM, PartLayout.RIGHT_ARM, PartLayout.LEFT_LEG, PartLayout.RIGHT_LEG -> List.of(NONE, SWING, BOB, SWAY);
+			default -> TYPES; // 만든 부위: 다 된다
 		};
 	}
 
