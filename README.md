@@ -62,3 +62,18 @@ xattr -dr com.apple.quarantine /Applications/MyPet.app
 - `platform/` – 창 감지 (윈도우: Win32, 맥: CoreGraphics/NSWorkspace, JNA 사용)
 - `appearance/` – 외형 감지·설정·색상·렌더링
 - `update/` – GitHub 릴리스 확인과 업데이트
+
+---
+
+## 라이선스 License
+MY_PET 은 [GNU General Public License v3.0](LICENSE) 으로 배포해요.
+
+- 자유롭게 쓰고, 고치고, 다시 배포할 수 있어요.
+- 다만 고친 버전을 배포할 때는 **그 소스 코드도 같은 GPL v3 로 공개**해야 해요.
+
+함께 들어 있는 부품의 라이선스:
+- [JNA](https://github.com/java-native-access/jna) – Apache 2.0 / LGPL 2.1
+- [FlatLaf](https://github.com/JFormDesigner/FlatLaf) – Apache 2.0
+- Java 실행 환경, JavaFX ([Liberica JDK](https://bell-sw.com/libericajdk/)) – GPL v2 + Classpath Exception (설치 폴더의 `runtime\legal` 에 원문)
+
+Copyright (C) 2026 janghg0929
