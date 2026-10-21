@@ -210,6 +210,14 @@ static class MyPetLauncher
             BackColor = Color.FromArgb(0xFB, 0xF6, 0xEC);
             Font = new Font("Malgun Gothic", 9.5f);
             TopMost = true;
+            try
+            {
+                Icon = Icon.ExtractAssociatedIcon(Assembly.GetExecutingAssembly().Location); // exe 아이콘 (떨어지는 비트)
+            }
+            catch (Exception)
+            {
+                // 기본 아이콘
+            }
 
             message = new Label();
             message.Text = upgrade ? "비트를 새 버전으로 바꾸는 중이에요..." : "비트를 처음 설치하는 중이에요... (한 번만 해요)";

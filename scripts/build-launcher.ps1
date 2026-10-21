@@ -23,6 +23,7 @@ $output = Join-Path $release 'MyPet.exe'
     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll `
     /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll `
     "/resource:$Package,MyPet-windows-x64.zip" `
+    "/win32icon:$(Join-Path $root 'packaging\MyPet.ico')" `
     "/out:$output" (Join-Path $root 'launcher\MyPetLauncher.cs')
 if ($LASTEXITCODE -ne 0) { throw "실행기 빌드 실패" }
 Write-Host ("완료: {0} ({1:N1} MB)" -f $output, ((Get-Item $output).Length / 1MB)) -ForegroundColor Green

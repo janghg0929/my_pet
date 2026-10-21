@@ -252,6 +252,7 @@ final class PetApp implements SettingsHost {
 	void start() {
 		platform.onStartup();
 		root = new JFrame("MY_PET");
+		root.setIconImages(Ui.appIcons()); // 설정 창 같은 하위 창도 이 아이콘을 쓴다
 		configureOverlayWindow(root);
 
 		baseCharacterColor = ColorSettings.loadSavedCharacterColor();

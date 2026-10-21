@@ -77,6 +77,18 @@ public final class Ui {
 		return appFont;
 	}
 
+	/** 앱 아이콘 (떨어지는 비트, scripts/MakeIcons.java 로 만든 크기별 그림). 창 제목줄·작업 표시줄에 쓴다. */
+	public static java.util.List<java.awt.Image> appIcons() {
+		java.util.List<java.awt.Image> icons = new java.util.ArrayList<>();
+		for (int size : new int[] {16, 20, 24, 32, 40, 48, 64, 128, 256}) {
+			java.net.URL url = Ui.class.getResource("/com/mypet/icons/icon-" + size + ".png");
+			if (url != null) {
+				icons.add(new javax.swing.ImageIcon(url).getImage());
+			}
+		}
+		return icons;
+	}
+
 	/** FlatLaf 테마 적용 (색 선택 창·알림 창 등 기본 창용). 실패하면 OS 기본 테마. */
 	public static void installTheme() {
 		Font font = appFont();

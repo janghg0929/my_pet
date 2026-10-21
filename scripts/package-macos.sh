@@ -33,6 +33,7 @@ MODULES="java.base,java.desktop,java.logging,java.net.http,java.prefs,java.manag
   --input "$ROOT/build/dist" \
   --main-jar MyPet.jar \
   --main-class com.mypet.Launcher \
+  --icon "$ROOT/packaging/MyPet.icns" \
   --add-modules "$MODULES" \
   --java-options "-Dapple.awt.UIElement=true" \
   --mac-package-identifier com.mypet.app \

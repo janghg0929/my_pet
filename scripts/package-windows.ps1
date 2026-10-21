@@ -33,6 +33,7 @@ $modules = 'java.base,java.desktop,java.logging,java.net.http,java.prefs,java.ma
     --input (Join-Path $root 'build\dist') `
     --main-jar MyPet.jar `
     --main-class com.mypet.Launcher `
+    --icon (Join-Path $root 'packaging\MyPet.ico') `
     --add-modules $modules `
     --dest $out
 if ($LASTEXITCODE -ne 0) { throw "jpackage failed" }
