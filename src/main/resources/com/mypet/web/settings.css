@@ -463,6 +463,25 @@ button {
   margin-bottom: 3px;
 }
 
+/* 버튼 그림 (icons.js): 글씨 앞에, 그림만 있으면 가운데 */
+.icon {
+  display: inline-block;
+  flex: none;
+  vertical-align: -3px;
+}
+
+[data-icon] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.icon-only {
+  min-width: 32px;
+  padding: 0 7px;
+}
+
 /* 사진 넣기 / 빼기 / 그리기 */
 .button-row.three {
   grid-template-columns: 1.4fr 1fr 1fr;
@@ -586,11 +605,6 @@ button {
   user-select: text;
 }
 
-.paint-hint {
-  margin: 8px 0 0;
-  color: var(--muted);
-  font-size: 11px;
-}
 
 /* 부위 추가 창 */
 .view[data-view="parts"] {

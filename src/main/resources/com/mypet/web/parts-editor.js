@@ -899,9 +899,11 @@
       }
     });
     document.getElementById("parts-symmetric").checked = !!this.layout.symmetric;
+    // 버튼은 짧게 (어느 부위인지는 탭에 보인다), 자세한 건 마우스를 올리면
     var photo = document.getElementById("parts-photo");
     var label = this.selected === "eyes" ? "'" + labelOf(this.expression) + "' 눈 사진" : window.BitView.partName(this.layout, this.selected) + " 사진";
-    window.BitView.setText(photo, (this.hasImage() ? "바꾸기: " : "넣기: ") + label);
+    window.BitView.setText(photo.querySelector(".label"), this.hasImage() ? "사진 바꾸기" : "사진 넣기");
+    photo.title = (this.hasImage() ? "바꾸기: " : "넣기: ") + label;
     document.getElementById("parts-photo-remove").disabled = !this.hasImage();
 
     function labelOf(key) {

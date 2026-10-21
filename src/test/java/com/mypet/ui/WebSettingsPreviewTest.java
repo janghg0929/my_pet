@@ -452,7 +452,7 @@ class WebSettingsPreviewTest {
 			&& airClip.track("rightArm").get(1).rotation == -120, "고급 시간 막대 키");
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "고급 탭도 창 크기 그대로: " + settings[0].dialog().getHeight());
 		snapshot(settings[0], new File(out, "web-parts-advanced.png"));
-		System.out.println("advanced photo buttons: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / '"
+		System.out.println("advanced photo buttons: " + evalScript(settings[0], "document.getElementById('tl-photo').title + ' / '"
 			+ " + document.getElementById('tl-photo-remove').disabled + ' / transport fits=' + (document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)"));
 		assertTrue(evalScript(settings[0], "String(document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)").equals("true"),
 			"고급 줄에 사진 버튼까지 한 줄에 들어가야 함");
@@ -466,10 +466,10 @@ class WebSettingsPreviewTest {
 		com.mypet.parts.PartTimeline.Photo photoAt = photoClip.photoAt("leftArm", 700);
 		com.mypet.parts.PartTimeline.Photo mirroredPhoto = photoClip.photoAt("rightArm", 700);
 		System.out.println("key photo: left=" + photoAt + " right=" + mirroredPhoto + " restart=" + photoClip.restart
-			+ " | button shows " + evalScript(settings[0], "document.getElementById('tl-photo').textContent"));
+			+ " | button shows " + evalScript(settings[0], "document.getElementById('tl-photo').title"));
 		assertTrue(photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart, "키 사진 / 이어서");
 		snapshot(settings[0], new File(out, "web-parts-keyphoto.png"));
-		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
+		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').title + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
 		// 고급 [그리기]: 지금 시간(0.6초) 키에 그린 그림이 들어간다
 		runScript(settings[0], "document.getElementById('tl-draw').click(); document.getElementById('paint-save').click();");
 		Thread.sleep(700);
