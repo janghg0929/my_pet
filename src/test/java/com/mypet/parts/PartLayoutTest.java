@@ -193,6 +193,30 @@ class PartLayoutTest {
 	}
 
 	@Test
+	void shrinkingPixelArtKeepsThinLines() {
+		// 24×24 칸에 한 칸 굵기 대각선 + 몸 색 바탕 → 8×8 로 줄여도 줄마다 선이 남는다 (건너뛰며 고르면 2/3 가 사라진다)
+		BufferedImage drawn = new BufferedImage(24, 24, BufferedImage.TYPE_INT_ARGB);
+		for (int y = 0; y < 24; y++) {
+			for (int x = 0; x < 24; x++) {
+				drawn.setRGB(x, y, PartImages.BODY_ALPHA << 24);
+			}
+			drawn.setRGB(y, y, 0xFF000000);
+		}
+		drawn.setRGB(23, 1, 0xFFE53935); // 빨간 한 칸도 몸 색에 묻히지 않는다
+		BufferedImage small = PartImages.resample(drawn, 8, 8);
+		for (int i = 0; i < 8; i++) {
+			assertEquals(0xFF000000, small.getRGB(i, i), "대각선 " + i);
+		}
+		assertEquals(0xFFE53935, small.getRGB(7, 0));
+		assertEquals(PartImages.BODY_ALPHA, small.getRGB(3, 0) >>> 24);
+		// 늘리면 칸 그대로
+		BufferedImage big = PartImages.resample(drawn, 48, 48);
+		assertEquals(0xFF000000, big.getRGB(3, 3));
+		assertEquals(PartImages.BODY_ALPHA, big.getRGB(2, 0) >>> 24);
+		assertTrue(PartImages.resample(drawn, 8, 8) == small, "크기별로 기억");
+	}
+
+	@Test
 	void importedImagesAreShrunkAndUnusedOnesDeleted(@TempDir Path dir) throws Exception {
 		File source = dir.resolve("photo.png").toFile();
 		ImageIO.write(new BufferedImage(4000, 2000, BufferedImage.TYPE_INT_ARGB), "png", source); // 아주 큰 사진만 줄인다

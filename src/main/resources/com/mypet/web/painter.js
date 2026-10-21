@@ -194,19 +194,11 @@
   /** 지금 그림(사진)을 칸에 옮긴다. 도트 그림은 칸을 그대로 골라 오고, 사진은 줄인 뒤 반투명을 없애서 또렷하게. */
   PixelPainter.prototype.fromImage = function (image, w, h) {
     if (image.pixelArt) {
-      // 앱 안 웹 엔진은 늘리고 줄일 때 늘 뭉개서, 칸을 직접 골라 온다
-      var px = window.BitView.pixelsOf(image);
-      var copy = new Uint8ClampedArray(w * h * 4);
-      for (var y = 0; y < h; y++) {
-        for (var x = 0; x < w; x++) {
-          var from = (Math.floor(y * px.h / h) * px.w + Math.floor(x * px.w / w)) * 4, to = (y * w + x) * 4;
-          var alpha = px.data[from + 3];
-          if (alpha === BODY_ALPHA || alpha >= 128) {
-            copy[to] = px.data[from];
-            copy[to + 1] = px.data[from + 1];
-            copy[to + 2] = px.data[from + 2];
-            copy[to + 3] = alpha === BODY_ALPHA ? BODY_ALPHA : 255;
-          }
+      // 앱 안 웹 엔진은 늘리고 줄일 때 늘 뭉개서, 칸을 직접 골라 온다 (줄여도 선이 끊기지 않게)
+      var copy = window.BitView.resamplePixels(window.BitView.pixelsOf(image), w, h).data;
+      for (var a = 3; a < copy.length; a += 4) {
+        if (copy[a] && copy[a] !== BODY_ALPHA) {
+          copy[a] = 255;
         }
       }
       return copy;
@@ -265,18 +257,8 @@
       return;
     }
     this.pushUndo();
-    var old = this.data, ow = this.w, oh = this.h;
-    var data = new Uint8ClampedArray(w * h * 4);
-    for (var y = 0; y < h; y++) {
-      for (var x = 0; x < w; x++) {
-        var sx = Math.floor(x * ow / w), sy = Math.floor(y * oh / h);
-        var from = (sy * ow + sx) * 4, to = (y * w + x) * 4;
-        data[to] = old[from];
-        data[to + 1] = old[from + 1];
-        data[to + 2] = old[from + 2];
-        data[to + 3] = old[from + 3];
-      }
-    }
+    // 늘리면 칸을 그대로 키우고, 줄이면 선이 끊기지 않게 고른다
+    var data = window.BitView.resamplePixels({ w: this.w, h: this.h, data: this.data }, w, h).data;
     this.w = w;
     this.h = h;
     this.data = data;

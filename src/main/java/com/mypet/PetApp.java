@@ -2198,6 +2198,15 @@ final class PetApp implements SettingsHost {
 			gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, pixel
 				? RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR : RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 			gi.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+			if (pixel) {
+				// 칸이 화면 픽셀보다 많으면 먼저 선이 끊기지 않게 줄인다 (그냥 줄이면 가는 선이 점점이 된다)
+				java.awt.geom.AffineTransform t = gi.getTransform();
+				int dw = (int) Math.max(1, Math.round(Math.abs(w) * Math.hypot(t.getScaleX(), t.getShearY())));
+				int dh = (int) Math.max(1, Math.round(Math.abs(h) * Math.hypot(t.getShearX(), t.getScaleY())));
+				if (dw < image.getWidth() || dh < image.getHeight()) {
+					image = PartImages.resample(image, Math.min(dw, image.getWidth()), Math.min(dh, image.getHeight()));
+				}
+			}
 			gi.translate(x, y);
 			if (flip) {
 				gi.translate(w, 0);

@@ -713,6 +713,44 @@
   }
 
   /**
+   * 도트 그림 칸을 w×h 칸으로 바꾼다 (PartImages.resample 과 같다). 늘릴 때는 칸을 그대로 키우고,
+   * 줄일 때는 한 칸에 들어가는 칸들 중 하나를 고른다: 빈칸보다 색 칸, 몸 색보다 다른 색, 그중 진한 색
+   * (그냥 건너뛰며 고르면 가는 선이 끊겨 점점이 된다).
+   */
+  function resamplePixels(px, w, h) {
+    var d = px.data;
+    var out = new Uint8ClampedArray(w * h * 4);
+    for (var y = 0; y < h; y++) {
+      var y0 = Math.floor(y * px.h / h), y1 = Math.max(y0 + 1, Math.floor((y + 1) * px.h / h));
+      for (var x = 0; x < w; x++) {
+        var x0 = Math.floor(x * px.w / w), x1 = Math.max(x0 + 1, Math.floor((x + 1) * px.w / w));
+        var best = -1, bestRank = Infinity;
+        for (var sy = y0; sy < y1; sy++) {
+          for (var sx = x0; sx < x1; sx++) {
+            var i = (sy * px.w + sx) * 4;
+            if (d[i + 3] < 128) {
+              continue;
+            }
+            var rank = d[i + 3] === BODY_ALPHA ? 1e9 : d[i] * 299 + d[i + 1] * 587 + d[i + 2] * 114;
+            if (rank < bestRank) {
+              bestRank = rank;
+              best = i;
+            }
+          }
+        }
+        if (best >= 0) {
+          var to = (y * w + x) * 4;
+          out[to] = d[best];
+          out[to + 1] = d[best + 1];
+          out[to + 2] = d[best + 2];
+          out[to + 3] = d[best + 3];
+        }
+      }
+    }
+    return { w: w, h: h, data: out };
+  }
+
+  /**
    * 도트 그림을 w×h 크기로 또렷하게 키운 그림. 앱 안 웹 엔진은 늘릴 때 늘 뭉개서,
    * 칸마다 네모로 직접 칠해 만든다 (가로로 같은 색이 이어지면 한 번에). 크기별로 기억해 둔다.
    */
@@ -724,6 +762,10 @@
       return image.crisp[key];
     }
     var px = pixelsOf(image);
+    if (dw < px.w || dh < px.h) {
+      // 칸이 화면 픽셀보다 많으면 먼저 선이 끊기지 않게 줄인다
+      px = resamplePixels(px, Math.min(dw, px.w), Math.min(dh, px.h));
+    }
     var c = document.createElement("canvas");
     c.width = dw;
     c.height = dh;
@@ -1147,6 +1189,7 @@
     setText: setText,
     setSmoothing: setSmoothing,
     pixelsOf: pixelsOf,
+    resamplePixels: resamplePixels,
     setPixels: setPixels,
     bounds: bounds,
     motionBounds: motionBounds,

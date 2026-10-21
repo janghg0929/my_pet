@@ -203,6 +203,64 @@ public final class PartImages {
 		return w + "," + h + "," + Base64.getEncoder().encodeToString(rgba);
 	}
 
+	private static final Map<BufferedImage, Map<Long, BufferedImage>> RESAMPLED = new java.util.WeakHashMap<>();
+
+	/**
+	 * 도트 그림 칸을 w×h 칸으로 바꾼다 (bit.js 의 resamplePixels 와 같다). 늘릴 때는 칸을 그대로 키우고,
+	 * 줄일 때는 한 칸에 들어가는 칸들 중 빈칸보다 색 칸, 몸 색보다 다른 색, 그중 진한 색을 고른다
+	 * (그냥 건너뛰며 고르면 가는 선이 끊겨 점점이 된다). 크기별로 기억해 둔다.
+	 */
+	public static BufferedImage resample(BufferedImage image, int w, int h) {
+		int sw = image.getWidth();
+		int sh = image.getHeight();
+		if (w == sw && h == sh) {
+			return image;
+		}
+		long key = ((long) w << 32) | h;
+		synchronized (RESAMPLED) {
+			Map<Long, BufferedImage> sizes = RESAMPLED.computeIfAbsent(image, k -> new HashMap<>());
+			BufferedImage cached = sizes.get(key);
+			if (cached != null) {
+				return cached;
+			}
+			int[] src = image.getRGB(0, 0, sw, sh, null, 0, sw);
+			int[] out = new int[w * h];
+			for (int y = 0; y < h; y++) {
+				int y0 = (int) ((long) y * sh / h);
+				int y1 = Math.max(y0 + 1, (int) ((long) (y + 1) * sh / h));
+				for (int x = 0; x < w; x++) {
+					int x0 = (int) ((long) x * sw / w);
+					int x1 = Math.max(x0 + 1, (int) ((long) (x + 1) * sw / w));
+					long bestRank = Long.MAX_VALUE;
+					int best = 0;
+					for (int sy = y0; sy < y1; sy++) {
+						for (int sx = x0; sx < x1; sx++) {
+							int argb = src[sy * sw + sx];
+							int alpha = argb >>> 24;
+							if (alpha < 128) {
+								continue;
+							}
+							long rank = alpha == BODY_ALPHA ? Long.MAX_VALUE - 1
+								: ((argb >> 16) & 255) * 299L + ((argb >> 8) & 255) * 587L + (argb & 255) * 114L;
+							if (rank < bestRank) {
+								bestRank = rank;
+								best = argb;
+							}
+						}
+					}
+					out[y * w + x] = best;
+				}
+			}
+			BufferedImage result = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+			result.setRGB(0, 0, w, h, out, 0, w);
+			if (sizes.size() > 12) {
+				sizes.clear();
+			}
+			sizes.put(key, result);
+			return result;
+		}
+	}
+
 	/** 쓰지 않는 사진 파일을 지운다. */
 	public synchronized void deleteUnused(Set<String> keep) {
 		if (!Files.isDirectory(dir)) {

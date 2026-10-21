@@ -458,6 +458,9 @@
     } else if (value.w !== part.w || value.h !== part.h) {
       var k = value.w / part.w;
       text += " · 1칸 = " + (k >= 1 ? "1/" + (Math.round(k * 10) / 10) : (Math.round(10 / k) / 10)) + "px";
+      if (value.w > part.w || value.h > part.h) {
+        text += " (부위보다 칸이 많으면 줄여서 보여요. 부위를 키우면 그대로)";
+      }
     }
     document.getElementById("part-menu-hint").textContent = text;
     document.getElementById("part-menu-apply").disabled = !value;

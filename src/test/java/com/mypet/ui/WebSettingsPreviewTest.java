@@ -329,6 +329,11 @@ class WebSettingsPreviewTest {
 			+ " return ((p[0] << 16) | (p[1] << 8) | p[2]).toString(16); }"
 			+ " at(5.5, 5.5) + ' ' + at(6.5, 5.5) + ' ' + at(6.5, 6.5)");
 		System.out.println("preview cells (red, right, diagonal): " + previewCells);
+		// 해상도가 화면 픽셀보다 많을 때: 24×24 한 칸 굵기 대각선을 8×8 로 줄여도 끊기지 않는다 (예전엔 점점이)
+		String shrunk = evalScript(settings[0], "var src = { w: 24, h: 24, data: new Uint8ClampedArray(24 * 24 * 4) };"
+			+ " for (var i = 0; i < 24; i++) { src.data[(i * 24 + i) * 4 + 3] = 255; }"
+			+ " var s = window.BitView.resamplePixels(src, 8, 8); var ok = 0; for (var j = 0; j < 8; j++) { if (s.data[(j * 8 + j) * 4 + 3] === 255) { ok++; } } String(ok)");
+		assertTrue("8".equals(shrunk), "줄여도 선이 이어진다: " + shrunk + "/8");
 		assertTrue(previewCells.equals("e53935 " + "4fc3f7 4fc3f7"), "미리보기의 그린 칸은 그 색 그대로: " + previewCells);
 		String bodyImage = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body().image;
 		java.awt.image.BufferedImage drawn = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
