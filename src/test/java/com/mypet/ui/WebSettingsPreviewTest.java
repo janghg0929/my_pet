@@ -249,6 +249,24 @@ class WebSettingsPreviewTest {
 			&& turned.eyes().rotation == -10, "회전 값");
 		snapshot(settings[0], new File(out, "web-parts-rotated.png"));
 
+		// 움직임: 왼팔 흔들기(걸을 때, 엇갈리게) → 오른팔도 따라온다. 편집 화면은 계속 움직인다
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=leftArm]').click();"
+			+ " document.querySelector('#parts-mode [data-mode=motion]').click();"
+			+ " document.querySelector('#motion-types [data-key=swing]').click();"
+			+ " document.querySelector('#motion-when [data-key=walk]').click();"
+			+ " document.getElementById('motion-alternate').click();");
+		Thread.sleep(700);
+		com.mypet.parts.PartLayout moving = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		System.out.println("motion sent: left=" + moving.leftArm().motion.type + "/" + moving.leftArm().motion.when
+			+ " right=" + moving.rightArm().motion.type + " half=" + moving.rightArm().motion.half + " flip=" + moving.rightArm().motion.flip
+			+ " | " + edges(settings[0].dialog()));
+		assertTrue("swing".equals(moving.rightArm().motion.type) && moving.rightArm().motion.half, "오른팔 움직임");
+		String frameA = evalScript(settings[0], "document.getElementById('parts-canvas').toDataURL()");
+		snapshot(settings[0], new File(out, "web-parts-motion.png"));
+		Thread.sleep(250);
+		String frameB = evalScript(settings[0], "document.getElementById('parts-canvas').toDataURL()");
+		assertTrue(!frameA.equals(frameB), "편집 화면 미리보기가 움직여야 함");
+
 		// 저장한 모습: 예시 모습 7개(2쪽)를 넣어 보고, 뒤로가기가 모습 꾸미기로 가는지 본다
 		runScript(settings[0], "var s = " + STATE + "; s.looks = [];"
 			+ " for (var i = 1; i <= 7; i++) { s.looks.push({ id: 'l' + i, name: '모습 ' + i + (i == 2 ? ' 이름이 아주 긴 모습' : ''),"

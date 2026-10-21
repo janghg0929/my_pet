@@ -37,8 +37,104 @@
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
   function copyLayout(layout) {
-    return JSON.parse(JSON.stringify(layout || DEFAULT_LAYOUT));
+    var copy = JSON.parse(JSON.stringify(layout || DEFAULT_LAYOUT));
+    PART_KEYS.forEach(function (key) {
+      copy[key].motion = normalizeMotion(copy[key].motion);
+    });
+    return copy;
   }
+
+  // ---------------------------------------------------------------- 부위 반복 움직임 (PartMotion.java 와 같은 계산)
+
+  var MOTION_TICKS_PER_SECOND = 64, MOTION_FADE = 0.12, BLINK_SECONDS = 0.18;
+
+  function defaultMotion() {
+    return { type: "none", size: 5, speed: 5, when: "always", alternate: false, flip: false, half: false };
+  }
+
+  function normalizeMotion(motion) {
+    var m = defaultMotion();
+    if (motion) {
+      Object.keys(m).forEach(function (key) {
+        if (motion[key] !== undefined && motion[key] !== null) {
+          m[key] = motion[key];
+        }
+      });
+    }
+    return m;
+  }
+
+  function motionActive(m) {
+    return !!m && m.type !== "none";
+  }
+
+  /** 좌우 맞추기: 반대쪽 부위에 넣을 움직임 (PartMotion.mirrored). */
+  function mirroredMotion(m) {
+    var copy = normalizeMotion(m);
+    copy.flip = !copy.flip;
+    copy.half = copy.alternate !== !!(m && m.half);
+    return copy;
+  }
+
+  var NO_MOTION = { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+
+  /** ticks 시점의 모양 (PartMotion.at). */
+  function motionTransform(m, ticks, weight) {
+    if (!motionActive(m) || !(weight > 0)) {
+      return NO_MOTION;
+    }
+    var seconds = ticks / MOTION_TICKS_PER_SECOND;
+    var hz = 0.15 * m.speed;
+    var angle = 2 * Math.PI * (hz * seconds + (m.half ? 0.5 : 0));
+    var direction = m.flip ? -1 : 1;
+    var wave = Math.sin(angle);
+    var rise = (1 - Math.cos(angle)) / 2;
+    switch (m.type) {
+      case "swing": return { dx: 0, dy: 0, rotation: direction * m.size * 3 * wave * weight, scaleX: 1, scaleY: 1 };
+      case "bob": return { dx: 0, dy: -m.size * rise * weight, rotation: 0, scaleX: 1, scaleY: 1 };
+      case "sway": return { dx: direction * m.size * wave * weight, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 };
+      case "breathe": {
+        var scale = 1 + m.size * 0.02 * rise * weight;
+        return { dx: 0, dy: 0, rotation: 0, scaleX: scale, scaleY: scale };
+      }
+      case "blink": {
+        var interval = 7 - m.speed * 0.6;
+        var into = (seconds + (m.half ? interval / 2 : 0)) % interval;
+        if (into >= BLINK_SECONDS) {
+          return NO_MOTION;
+        }
+        var closed = Math.sin(Math.PI * into / BLINK_SECONDS) * (0.5 + m.size * 0.05);
+        return { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 - closed * weight };
+      }
+    }
+    return NO_MOTION;
+  }
+
+  /** 시간과 부위별 켜짐 정도를 들고 다니는 시계. tick(layout, state) 를 64Hz 로 부른다. */
+  function MotionClock() {
+    this.ticks = 0;
+    this.weights = {};
+  }
+
+  MotionClock.prototype.tick = function (layout, state) {
+    var self = this;
+    this.ticks += 1;
+    PART_KEYS.forEach(function (key) {
+      var m = layout[key].motion;
+      // state "preview" = 설정 화면 편집기: 언제든 움직인다
+      var target = motionActive(m) && (m.when === "always" || m.when === state || state === "preview") ? 1 : 0;
+      var w = self.weights[key] || 0;
+      w += (target - w) * MOTION_FADE;
+      if (Math.abs(target - w) < 0.01) {
+        w = target;
+      }
+      self.weights[key] = w;
+    });
+  };
+
+  MotionClock.prototype.transform = function (layout, key) {
+    return motionTransform(layout[key].motion, this.ticks, this.weights[key] || 0);
+  };
 
   function newPose() {
     return { x: 0, y: 0, bob: 0, limbX: 0, limbY: 0, swayX: 0, armLift: 0, eyeShift: 0, falling: false, expression: null };
@@ -57,6 +153,42 @@
     };
   }
 
+  function halfExtents(part, degrees, scale) {
+    var rad = degrees * Math.PI / 180;
+    var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+    return [(part.w / 2 * cos + part.h / 2 * sin) * scale, (part.w / 2 * sin + part.h / 2 * cos) * scale];
+  }
+
+  /** 움직임까지 넣은 범위 (PartLayout.motionBounds). */
+  function motionBounds(layout, withRaise) {
+    var b = bounds(layout, withRaise);
+    PART_KEYS.forEach(function (key) {
+      var part = layout[key];
+      var m = part.motion;
+      if (!motionActive(m)) {
+        return;
+      }
+      var e = m.type === "swing" ? [m.size * 3, 0, 0, 1] : m.type === "bob" ? [0, m.size, 0, 1]
+        : m.type === "sway" ? [0, 0, m.size, 1] : m.type === "breathe" ? [0, 0, 0, 1 + m.size * 0.02] : [0, 0, 0, 1];
+      var rotation = part.rotation || 0;
+      var half = halfExtents(part, rotation, e[3]);
+      if (e[0] > 0) {
+        for (var i = -8; i <= 8; i++) {
+          var turned = halfExtents(part, rotation + e[0] * i / 8, e[3]);
+          half[0] = Math.max(half[0], turned[0]);
+          half[1] = Math.max(half[1], turned[1]);
+        }
+      }
+      var arm = key === "leftArm" || key === "rightArm";
+      var cx = part.x + part.w / 2, cy = part.y + part.h / 2;
+      b.minX = Math.min(b.minX, Math.floor(cx - half[0] - e[2]));
+      b.maxX = Math.max(b.maxX, Math.ceil(cx + half[0] + e[2]));
+      b.minY = Math.min(b.minY, Math.floor(cy - half[1] - e[1]) - (arm && withRaise ? ARM_RAISE : 0));
+      b.maxY = Math.max(b.maxY, Math.ceil(cy + half[1]));
+    });
+    return b;
+  }
+
   /** 전체 범위. withRaise 면 팔을 든 높이까지 포함. */
   function bounds(layout, withRaise) {
     var b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
@@ -71,13 +203,17 @@
     return b;
   }
 
-  /** 부위 가운데(캔버스 좌표)를 기준으로 돌린다. 회전이 없으면 아무것도 안 한다. */
-  function rotateAround(ctx, rotation, cx, cy) {
-    if (rotation) {
-      ctx.translate(cx, cy);
-      ctx.rotate(rotation * Math.PI / 180);
-      ctx.translate(-cx, -cy);
+  /** 부위 가운데(캔버스 좌표)를 기준으로 돌리고 움직인다 (mt: 움직임 모양, k: 1px 크기). */
+  function transformAround(ctx, rotation, cx, cy, mt, k) {
+    var m = mt || NO_MOTION;
+    var turn = (rotation || 0) + m.rotation;
+    if (!turn && !m.dx && !m.dy && m.scaleX === 1 && m.scaleY === 1) {
+      return;
     }
+    ctx.translate(cx + m.dx * k, cy + m.dy * k);
+    ctx.rotate(turn * Math.PI / 180);
+    ctx.scale(m.scaleX, m.scaleY);
+    ctx.translate(-cx, -cy);
   }
 
   // ---------------------------------------------------------------- 그리기
@@ -127,12 +263,12 @@
     ctx.restore();
   }
 
-  // 부위 하나 (dx, dy: 움직임으로 생기는 어긋남)
-  function drawPart(ctx, ox, oy, k, part, dx, dy, color) {
+  // 부위 하나 (dx, dy: 걷기 등으로 생기는 어긋남, mt: 반복 움직임 모양)
+  function drawPart(ctx, ox, oy, k, part, dx, dy, color, mt) {
     var x = part.x + dx, y = part.y + dy;
     var image = loadedImage(part.image);
     ctx.save();
-    rotateAround(ctx, part.rotation, ox + (x + part.w / 2) * k, oy + (y + part.h / 2) * k);
+    transformAround(ctx, part.rotation, ox + (x + part.w / 2) * k, oy + (y + part.h / 2) * k, mt, k);
     if (image) {
       drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, part.flip);
     } else {
@@ -142,17 +278,21 @@
   }
 
   // ox, oy: 몸통 기본 위치(0,0)의 캔버스 좌표(장치 픽셀), k: 1px 이 몇 장치 픽셀인지
+  // pose.motion (MotionClock) 이 있으면 부위 반복 움직임도 그린다
   function drawBitAt(ctx, ox, oy, k, color, pose, layout) {
     var p = pose || newPose();
     var L = layout || DEFAULT_LAYOUT;
+    function mt(key) {
+      return p.motion && L[key].motion ? p.motion.transform(L, key) : NO_MOTION;
+    }
     // 몸통, 다리 (앱과 같은 순서로 그린다)
-    drawPart(ctx, ox, oy, k, L.body, 0, 0, color);
-    drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color);
-    drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color);
-    drawEyes(ctx, ox, oy, k, p, L.eyes);
+    drawPart(ctx, ox, oy, k, L.body, 0, 0, color, mt("body"));
+    drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color, mt("leftLeg"));
+    drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color, mt("rightLeg"));
+    drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"));
     // 팔
-    drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color);
-    drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color);
+    drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color, mt("leftArm"));
+    drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color, mt("rightArm"));
   }
 
   function expressionOf(p) {
@@ -160,11 +300,11 @@
   }
 
   // 눈: 표정별 사진이 있으면 사진, 없으면 기본 눈을 눈 영역에 맞춰 늘려 그린다
-  function drawEyes(ctx, ox, oy, k, p, eyes) {
+  function drawEyes(ctx, ox, oy, k, p, eyes, mt) {
     var expression = expressionOf(p);
     var image = loadedImage(eyes.images && eyes.images[expression]);
     ctx.save();
-    rotateAround(ctx, eyes.rotation, ox + (eyes.x + eyes.w / 2) * k, oy + (eyes.y + eyes.h / 2) * k);
+    transformAround(ctx, eyes.rotation, ox + (eyes.x + eyes.w / 2) * k, oy + (eyes.y + eyes.h / 2) * k, mt, k);
     if (image) {
       drawImage(ctx, image, ox + (eyes.x + p.eyeShift) * k, oy + eyes.y * k, eyes.w * k, eyes.h * k, false);
       ctx.restore();
@@ -257,6 +397,7 @@
     this.color = "#4fc3f7";
     this.layout = copyLayout(DEFAULT_LAYOUT);
     this.running = false;
+    this.motion = new MotionClock();
     this.reset();
   }
 
@@ -408,19 +549,23 @@
       this.swayPhase += phaseStep;
     }
     p.swayX = Math.sin(this.swayPhase) * LIMB_SWAY_MAX_X * this.swayAmp;
+
+    this.motion.tick(this.layout, this.airborne ? "air" : (walking ? "walk" : "idle"));
+    p.motion = this.motion;
   };
 
   Stage.prototype.draw = function () {
     var c = prepare(this.canvas);
     var L = this.layout;
-    var b = bounds(L, true);
+    var b = motionBounds(L, true);
+    var feet = bounds(L, true).maxY; // 발 높이는 움직임 없는 모양으로
     // 기본 1.5배, 꾸민 비트가 커서 무대에 안 들어가면 줄인다
     var scale = Math.min(1.5, (c.w - 20) / Math.max(1, b.maxX - b.minX), (c.h - 20) / Math.max(1, b.maxY - b.minY + 70));
     var k = scale * c.dpr;
     var groundY = c.h * c.dpr - 8 * c.dpr; // 발이 닿는 바닥
     var centerX = (L.body.x + L.body.w / 2);
     var ox = (c.w * c.dpr) / 2 - centerX * k + this.pose.x * k;
-    var oy = groundY - b.maxY * k + (this.pose.y + this.pose.bob) * k;
+    var oy = groundY - feet * k + (this.pose.y + this.pose.bob) * k;
     // 바닥 선
     c.ctx.fillStyle = "#e9e1d3";
     c.ctx.fillRect(0, Math.round(groundY), c.w * c.dpr, Math.max(1, Math.round(c.dpr)));
@@ -433,6 +578,10 @@
     images: images,
     copyLayout: copyLayout,
     bounds: bounds,
+    motionBounds: motionBounds,
+    MotionClock: MotionClock,
+    defaultMotion: defaultMotion,
+    mirroredMotion: mirroredMotion,
     prepare: prepare,
     newPose: newPose,
     drawBitAt: drawBitAt,

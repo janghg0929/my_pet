@@ -49,6 +49,8 @@ public final class PartLayout {
 		public boolean flip;
 		/** 회전 (도, 시계 방향, -179..180). 부위 가운데를 기준으로 돌린다. */
 		public int rotation;
+		/** 반복 움직임 (없으면 type = none). */
+		public PartMotion motion = new PartMotion();
 		/** 눈 전용: 표정별 사진 파일 이름. */
 		public final Map<String, String> images = new LinkedHashMap<>();
 
@@ -64,16 +66,36 @@ public final class PartLayout {
 			copy.image = image;
 			copy.flip = flip;
 			copy.rotation = rotation;
+			copy.motion = motion.copy();
 			copy.images.putAll(images);
 			return copy;
 		}
 
 		/** 돌린 부위를 감싸는 사각형의 가로 반지름, 세로 반지름 (회전이 없으면 w/2, h/2). */
 		double[] halfExtents() {
-			double rad = Math.toRadians(rotation);
+			return halfExtents(rotation, 1);
+		}
+
+		double[] halfExtents(double degrees, double scale) {
+			double rad = Math.toRadians(degrees);
 			double cos = Math.abs(Math.cos(rad));
 			double sin = Math.abs(Math.sin(rad));
-			return new double[] {w / 2.0 * cos + h / 2.0 * sin, w / 2.0 * sin + h / 2.0 * cos};
+			return new double[] {(w / 2.0 * cos + h / 2.0 * sin) * scale, (w / 2.0 * sin + h / 2.0 * cos) * scale};
+		}
+
+		/** 움직임으로 가장 크게 퍼졌을 때를 감싸는 가로/세로 반지름. */
+		double[] motionHalfExtents() {
+			double[] e = motion.extremes();
+			double[] half = halfExtents(rotation, e[3]);
+			if (e[0] > 0) {
+				// 흔들어서 도는 범위 안을 촘촘히 재서 가장 큰 값
+				for (int i = -8; i <= 8; i++) {
+					double[] turned = halfExtents(rotation + e[0] * i / 8.0, e[3]);
+					half[0] = Math.max(half[0], turned[0]);
+					half[1] = Math.max(half[1], turned[1]);
+				}
+			}
+			return half;
 		}
 
 		public int right() {
@@ -176,6 +198,7 @@ public final class PartLayout {
 		target.image = source.image;
 		target.flip = source.image != null && !source.flip;
 		target.rotation = normalizeRotation(-source.rotation);
+		target.motion = source.motion.mirrored();
 	}
 
 	/** 전체 범위 (돌린 부위는 돌린 모양을 감싸는 사각형). armRaise = 점프할 때 팔을 드는 높이. */
@@ -199,6 +222,34 @@ public final class PartLayout {
 			maxX = Math.max(maxX, right);
 			minY = Math.min(minY, arm ? top - armRaise : top);
 			maxY = Math.max(maxY, bottom);
+		}
+		return new Bounds(minX, minY, maxX, maxY);
+	}
+
+	/**
+	 * 움직임까지 넣은 전체 범위 (창 크기용). 위·왼쪽·오른쪽은 움직임으로 넓어지고,
+	 * 아래쪽(maxY)도 넓어지지만 발 높이는 {@link #bounds} 의 maxY 를 쓴다.
+	 */
+	public Bounds motionBounds(int armRaise) {
+		Bounds base = bounds(armRaise);
+		int minX = base.minX();
+		int minY = base.minY();
+		int maxX = base.maxX();
+		int maxY = base.maxY();
+		for (Map.Entry<String, Part> entry : parts.entrySet()) {
+			Part part = entry.getValue();
+			if (!part.motion.active()) {
+				continue;
+			}
+			boolean arm = LEFT_ARM.equals(entry.getKey()) || RIGHT_ARM.equals(entry.getKey());
+			double[] e = part.motion.extremes();
+			double[] half = part.motionHalfExtents();
+			double cx = part.x + part.w / 2.0;
+			double cy = part.y + part.h / 2.0;
+			minX = Math.min(minX, (int) Math.floor(cx - half[0] - e[2]));
+			maxX = Math.max(maxX, (int) Math.ceil(cx + half[0] + e[2]));
+			minY = Math.min(minY, (int) Math.floor(cy - half[1] - e[1]) - (arm ? armRaise : 0));
+			maxY = Math.max(maxY, (int) Math.ceil(cy + half[1]));
 		}
 		return new Bounds(minX, minY, maxX, maxY);
 	}
@@ -239,6 +290,7 @@ public final class PartLayout {
 			item.put("w", part.w);
 			item.put("h", part.h);
 			item.put("rotation", part.rotation);
+			item.put("motion", part.motion.toJson());
 			if (EYES.equals(entry.getKey())) {
 				Map<String, Object> images = new LinkedHashMap<>();
 				for (String expression : EYE_EXPRESSIONS) {
@@ -273,6 +325,7 @@ public final class PartLayout {
 			part.w = clampInt(item.get("w"), part.w, MIN_SIZE, MAX_SIZE);
 			part.h = clampInt(item.get("h"), part.h, MIN_SIZE, MAX_SIZE);
 			part.rotation = normalizeRotation(clampInt(item.get("rotation"), 0, -100_000, 100_000));
+			part.motion = PartMotion.fromJson(item.get("motion"));
 			if (EYES.equals(key)) {
 				if (item.get("images") instanceof Map<?, ?> images) {
 					for (String expression : EYE_EXPRESSIONS) {

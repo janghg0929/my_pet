@@ -182,6 +182,9 @@
       editor.refreshControls();
       editor.draw();
     }
+    if (editor) {
+      editor.setVisible(view === "parts");
+    }
     if (view === "looks") {
       drawLookIcons(); // 숨겨져 있을 때는 크기가 0 이라 보일 때 그린다
     }

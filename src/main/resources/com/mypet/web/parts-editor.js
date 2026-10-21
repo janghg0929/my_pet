@@ -16,6 +16,22 @@
   var ROTATE_SNAP = 15, ROTATE_SNAP_RANGE = 4; // 15도 단위 근처에서는 딱 맞춘다
   var MIN_SIZE = 2, MAX_SIZE = 400, MAX_OFFSET = 400;
   var FIELDS = ["x", "y", "w", "h", "rotation"];
+  var MOTION_TYPES = [
+    { key: "none", label: "없음" }, { key: "swing", label: "흔들기" }, { key: "bob", label: "둥실" },
+    { key: "sway", label: "좌우" }, { key: "breathe", label: "숨쉬기" }, { key: "blink", label: "깜빡" }
+  ];
+  var MOTION_WHEN = [
+    { key: "always", label: "항상" }, { key: "idle", label: "쉴 때" }, { key: "walk", label: "걸을 때" },
+    { key: "air", label: "공중" }, { key: "grab", label: "잡힐 때" }
+  ];
+  var MOTION_HINTS = {
+    swing: "가운데를 기준으로 왔다갔다 돌아요",
+    bob: "위로 살짝 떴다가 내려와요",
+    sway: "옆으로 왔다갔다 해요",
+    breathe: "커졌다 작아졌다 해요",
+    blink: "가끔 깜빡여요, 빠를수록 자주"
+  };
+  var TICK_MS = 1000 / 64;
 
   /** 각도를 -179..180 도로 맞춘다 (PartLayout.normalizeRotation 과 같다). */
   function normalizeRotation(degrees) {
@@ -42,7 +58,12 @@
     this.view = null; // { k, ox, oy, w, h } (화면 px)
     this.commitTimer = null;
     this.resetArmed = false;
+    this.mode = "shape";
+    this.clock = new window.BitView.MotionClock();
+    this.animating = false;
+    this.visible = false;
     this.build();
+    this.buildMotion();
   }
 
   // ---------------------------------------------------------------- 화면 구성
@@ -122,6 +143,147 @@
     });
   };
 
+  // ---------------------------------------------------------------- 움직임
+
+  PartsEditor.prototype.buildMotion = function () {
+    var self = this;
+    Array.prototype.forEach.call(document.querySelectorAll("#parts-mode .seg"), function (button) {
+      button.addEventListener("click", function () {
+        self.mode = button.getAttribute("data-mode");
+        self.refreshControls();
+        if (self.onHeightChange) {
+          self.onHeightChange();
+        }
+      });
+    });
+    function segments(containerId, items, onPick) {
+      var container = document.getElementById(containerId);
+      items.forEach(function (item) {
+        var button = document.createElement("button");
+        button.className = "seg";
+        button.textContent = item.label;
+        button.setAttribute("data-key", item.key);
+        button.addEventListener("click", function () { onPick(item.key); });
+        container.appendChild(button);
+      });
+    }
+    segments("motion-types", MOTION_TYPES, function (key) { self.changeMotion({ type: key }); });
+    segments("motion-when", MOTION_WHEN, function (key) { self.changeMotion({ when: key }); });
+    ["size", "speed"].forEach(function (field) {
+      var input = document.getElementById("motion-" + field);
+      input.addEventListener("input", function () {
+        var change = {};
+        change[field] = parseInt(input.value, 10);
+        self.changeMotion(change);
+      });
+    });
+    document.getElementById("motion-alternate").addEventListener("change", function (event) {
+      self.changeMotion({ alternate: event.target.checked });
+    });
+  };
+
+  PartsEditor.prototype.changeMotion = function (change) {
+    var part = this.part();
+    var motion = part.motion || window.BitView.defaultMotion();
+    Object.keys(change).forEach(function (key) {
+      motion[key] = change[key];
+    });
+    part.motion = motion;
+    this.afterChange(this.selected);
+    this.refreshControls();
+    this.draw();
+    this.updateAnimation();
+    this.commit(250);
+  };
+
+  /** 움직임 칸 상태를 고른 부위에 맞춘다. */
+  PartsEditor.prototype.refreshMotionControls = function () {
+    var shape = this.mode === "shape";
+    var layoutBefore = this.motionLayoutKey();
+    document.getElementById("parts-shape").hidden = !shape;
+    document.getElementById("parts-motion").hidden = shape;
+    Array.prototype.forEach.call(document.querySelectorAll("#parts-mode .seg"), function (button) {
+      button.classList.toggle("selected", button.getAttribute("data-mode") === (shape ? "shape" : "motion"));
+    });
+    var m = this.part().motion || window.BitView.defaultMotion();
+    function select(containerId, key) {
+      Array.prototype.forEach.call(document.querySelectorAll("#" + containerId + " .seg"), function (button) {
+        button.classList.toggle("selected", button.getAttribute("data-key") === key);
+      });
+    }
+    select("motion-types", m.type);
+    select("motion-when", m.when);
+    var active = m.type !== "none";
+    document.getElementById("motion-settings").hidden = !active;
+    ["size", "speed"].forEach(function (field) {
+      var input = document.getElementById("motion-" + field);
+      if (document.activeElement !== input) {
+        input.value = m[field];
+      }
+      document.getElementById("motion-" + field + "-value").textContent = m[field];
+    });
+    var limb = !!MIRROR[this.selected];
+    document.getElementById("motion-alternate-row").hidden = !(limb && this.layout.symmetric);
+    document.getElementById("motion-alternate").checked = !!m.alternate;
+    document.getElementById("motion-hint").textContent = active
+      ? MOTION_HINTS[m.type] + " (미리보기는 늘 움직여요)"
+      : "부위를 고르고 움직임을 골라 보세요";
+    return layoutBefore !== this.motionLayoutKey();
+  };
+
+  /** 높이에 영향을 주는 칸들이 보이는지 (바뀌면 창 높이를 다시 맞춘다). */
+  PartsEditor.prototype.motionLayoutKey = function () {
+    return ["parts-shape", "parts-motion", "motion-settings", "motion-alternate-row"].map(function (id) {
+      return document.getElementById(id).hidden ? "0" : "1";
+    }).join("");
+  };
+
+  PartsEditor.prototype.hasMotion = function () {
+    var layout = this.layout;
+    return window.BitView.PART_KEYS.some(function (key) {
+      return layout[key].motion && layout[key].motion.type !== "none";
+    });
+  };
+
+  /** 화면에 보이고 움직이는 부위가 있으면 미리보기를 움직인다. */
+  PartsEditor.prototype.setVisible = function (visible) {
+    this.visible = visible;
+    this.updateAnimation();
+  };
+
+  PartsEditor.prototype.updateAnimation = function () {
+    var self = this;
+    var should = this.visible && this.hasMotion();
+    if (!should || this.animating) {
+      if (!should) {
+        this.animating = false;
+      }
+      return;
+    }
+    this.animating = true;
+    var last = null;
+    var acc = 0;
+    function frame(time) {
+      if (!self.animating) {
+        self.draw();
+        return;
+      }
+      if (last === null) {
+        last = time;
+      }
+      acc = Math.min(acc + (time - last), TICK_MS * 4);
+      last = time;
+      while (acc >= TICK_MS) {
+        // 편집 화면에서는 "언제"와 상관없이 늘 움직여서 보여준다
+        self.clock.tick(self.layout, "preview");
+        acc -= TICK_MS;
+      }
+      self.draw();
+      window.requestAnimationFrame(frame);
+    }
+    window.requestAnimationFrame(frame);
+  };
+
   // ---------------------------------------------------------------- 상태
 
   /** Java 가 보낸 배치로 바꾼다 (끄는 중에는 무시). */
@@ -132,6 +294,7 @@
     this.layout = window.BitView.copyLayout(layout);
     this.refreshControls();
     this.draw();
+    this.updateAnimation();
   };
 
   PartsEditor.prototype.select = function (key) {
@@ -160,12 +323,14 @@
     }
     var eyeTabs = document.getElementById("parts-eye-tabs");
     var hideEyeTabs = this.selected !== "eyes";
+    var heightChanged = this.refreshMotionControls();
     if (eyeTabs.hidden !== hideEyeTabs) {
       eyeTabs.hidden = hideEyeTabs;
-      // 표정 줄이 생기거나 없어지면 창 높이를 다시 맞춘다
-      if (this.onHeightChange) {
-        this.onHeightChange();
-      }
+      heightChanged = true;
+    }
+    // 표정 줄이나 움직임 칸이 생기거나 없어지면 창 높이를 다시 맞춘다
+    if (heightChanged && this.onHeightChange) {
+      this.onHeightChange();
     }
     var exprButtons = eyeTabs.querySelectorAll(".seg");
     for (var j = 0; j < exprButtons.length; j++) {
@@ -208,6 +373,7 @@
     t.image = s.image;
     t.flip = !!s.image && !s.flip;
     t.rotation = normalizeRotation(-(s.rotation || 0));
+    t.motion = window.BitView.mirroredMotion(s.motion);
   };
 
   /** key 를 바꾼 뒤 좌우 맞추기 반영. 팔/다리만 반대쪽이 따라오고, 몸통을 바꿔도 다른 부위는 그대로다. */
@@ -252,7 +418,7 @@
 
   /** 비트 전체가 캔버스에 들어오도록 배율과 위치를 정한다. */
   PartsEditor.prototype.fit = function (w, h) {
-    var b = window.BitView.bounds(this.layout, false);
+    var b = window.BitView.motionBounds(this.layout, false);
     var bw = Math.max(20, b.maxX - b.minX);
     var bh = Math.max(20, b.maxY - b.minY);
     // 위쪽은 회전 손잡이 자리만큼 더 비워 둔다
@@ -269,7 +435,7 @@
   /** 지금 배율·위치로 비트 전체가 캔버스 안에 보이는지. */
   PartsEditor.prototype.fits = function () {
     var v = this.view;
-    var b = window.BitView.bounds(this.layout, false);
+    var b = window.BitView.motionBounds(this.layout, false);
     var margin = 6;
     return v.ox + b.minX * v.k >= margin && v.ox + b.maxX * v.k <= v.w - margin
       && v.oy + b.minY * v.k >= margin + ROTATE_GAP && v.oy + b.maxY * v.k <= v.h - margin;
@@ -305,6 +471,7 @@
     if (pose.expression === "fall") {
       pose.armLift = -8;
     }
+    pose.motion = this.clock;
     window.BitView.drawBitAt(ctx, v.ox * d, v.oy * d, v.k * d, this.getColor(), pose, this.layout);
 
     // 고른 부위 표시: 점선 테두리 + 크기 조절 손잡이(오른쪽 아래) + 회전 손잡이(위), 부위와 같이 돌린다

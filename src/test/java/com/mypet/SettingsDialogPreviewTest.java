@@ -98,6 +98,9 @@ class SettingsDialogPreviewTest {
 		layout.leftLeg().x = 14;
 		layout.leftLeg().h = 12;
 		layout.leftArm().rotation = -30;
+		// 움직임: 팔은 흔들기 (1/4 바퀴 지난 순간을 찍는다), 몸통은 숨쉬기
+		layout.leftArm().motion.type = com.mypet.parts.PartMotion.SWING;
+		layout.body().motion.type = com.mypet.parts.PartMotion.BREATHE;
 		layout.leftLeg().rotation = 15;
 		layout.mirrorFrom(PartLayout.LEFT_ARM);
 		layout.mirrorFrom(PartLayout.LEFT_LEG);
@@ -107,6 +110,12 @@ class SettingsDialogPreviewTest {
 		layout.eyes().w = 24;
 		layout.eyes().h = 10;
 		app.applyLayout(layout);
+		set(app, "motionTicks", 21L);
+		@SuppressWarnings("unchecked")
+		java.util.Map<String, Double> weights = (java.util.Map<String, Double>) get(app, "motionWeights");
+		for (String key : PartLayout.KEYS) {
+			weights.put(key, 1.0);
+		}
 		try {
 			set(app, "expression", Constants.EXPR_NEUTRAL);
 			java.lang.reflect.Method paint = PetApp.class.getDeclaredMethod("paintScene", Graphics2D.class);
@@ -126,6 +135,7 @@ class SettingsDialogPreviewTest {
 			ImageIO.write(img, "png", file);
 		} finally {
 			app.applyLayout(PartLayout.defaults());
+			weights.clear();
 		}
 	}
 
