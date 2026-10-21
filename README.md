@@ -58,11 +58,6 @@ xattr -dr com.apple.quarantine /Applications/MyPet.app
 
 유튜브 탭을 보고 있을 때 헤드셋을 쓰는 기능은 macOS 의 `화면 기록` 권한이 있어야 동작해요 (창 제목을 읽기 위해서예요). 없어도 나머지 기능은 모두 동작해요.
 
-- `PetApp` – 펫 본체 (파이썬 `my_pet.py` 포팅: 물리, 입력, 그리기, 설정 창)
-- `platform/` – 창 감지 (윈도우: Win32, 맥: CoreGraphics/NSWorkspace, JNA 사용)
-- `appearance/` – 외형 감지·설정·색상·렌더링
-- `update/` – GitHub 릴리스 확인과 업데이트
-
 ---
 
 ## 라이선스 License
