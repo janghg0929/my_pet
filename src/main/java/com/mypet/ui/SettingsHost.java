@@ -31,6 +31,18 @@ public interface SettingsHost {
 	/** 부위 사진을 설정 화면에 보낼 data URL (없으면 null). */
 	String partImageDataUrl(String fileName);
 
+	/** 저장한 모습: 지금 모습(배치·사진·몸 색)을 이름을 물어서 저장. */
+	void saveLook();
+
+	/** 저장한 모습: 불러와서 지금 모습으로. */
+	void applyLook(String id);
+
+	/** 저장한 모습: 이름 바꾸기 (이름을 묻는다). */
+	void renameLook(String id);
+
+	/** 저장한 모습: 지우기. */
+	void deleteLook(String id);
+
 	/** 설정 창 닫기. */
 	void closeSettings();
 

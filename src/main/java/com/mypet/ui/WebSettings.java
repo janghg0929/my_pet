@@ -443,6 +443,33 @@ public final class WebSettings implements SettingsHost.View {
 			SwingUtilities.invokeLater(host::resetParts);
 		}
 
+		// ---- 저장한 모습
+
+		public void saveLook() {
+			SwingUtilities.invokeLater(host::saveLook);
+		}
+
+		public void applyLook(Object id) {
+			if (id != null) {
+				String key = String.valueOf(id);
+				SwingUtilities.invokeLater(() -> host.applyLook(key));
+			}
+		}
+
+		public void renameLook(Object id) {
+			if (id != null) {
+				String key = String.valueOf(id);
+				SwingUtilities.invokeLater(() -> host.renameLook(key));
+			}
+		}
+
+		public void deleteLook(Object id) {
+			if (id != null) {
+				String key = String.valueOf(id);
+				SwingUtilities.invokeLater(() -> host.deleteLook(key));
+			}
+		}
+
 		/** JS 가 아직 없는 부위 사진을 달라고 하면 data URL 을 window.bitImage(이름, url) 로 보낸다. */
 		public void requestImage(Object fileName) {
 			if (fileName == null) {

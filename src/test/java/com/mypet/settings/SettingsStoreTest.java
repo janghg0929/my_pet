@@ -1,6 +1,8 @@
 package com.mypet.settings;
 
 import com.mypet.appearance.AppearanceMode;
+import com.mypet.parts.PartLayout;
+import com.mypet.parts.SavedLook;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -99,5 +101,47 @@ class SettingsStoreTest {
 		again.load();
 		assertEquals("#123abc", again.characterColor());
 		assertEquals(AppearanceMode.ALWAYS, again.appearance(SettingsStore.HEADSET));
+	}
+
+	@Test
+	void savedLooksRoundTripAndKeepTheirImages() {
+		Path json = dir.resolve("looks").resolve("settings.json");
+		SettingsStore store = store(json, dir.resolve("a"), dir.resolve("b"), dir.resolve("c"));
+		store.load();
+		PartLayout current = PartLayout.defaults();
+		current.body().image = "now.png";
+		store.setParts(current);
+		PartLayout cat = PartLayout.defaults();
+		cat.leftArm().w = 20;
+		cat.eyes().images.put(PartLayout.EXPR_FALL, "cat-eyes.png");
+		store.setLooks(List.of(
+			SavedLook.create("  고양이   비트  ", "#F48FB1", cat),
+			SavedLook.create("", null, PartLayout.defaults())));
+		assertTrue(store.save() != null);
+
+		SettingsStore again = store(json, dir.resolve("a"), dir.resolve("b"), dir.resolve("c"));
+		again.load();
+		List<SavedLook> looks = again.looks();
+		assertEquals(2, looks.size());
+		assertEquals("고양이 비트", looks.get(0).name());
+		assertEquals("#f48fb1", looks.get(0).color());
+		assertEquals(20, looks.get(0).parts().leftArm().w);
+		assertEquals("이름 없음", looks.get(1).name());
+		assertNull(looks.get(1).color());
+		assertEquals(store.looks().get(0).id(), looks.get(0).id());
+		// 지금 모습과 저장한 모습의 사진은 지우면 안 된다
+		assertEquals(java.util.Set.of("now.png", "cat-eyes.png"), again.usedImageFiles());
+		assertEquals("이름이 아주 아주 아주 아주 아주 길", looks.get(0).withName("이름이 아주 아주 아주 아주 아주 길어요").name());
+	}
+
+	@Test
+	void brokenLooksAreSkipped() throws Exception {
+		Path json = dir.resolve("broken").resolve("settings.json");
+		Files.createDirectories(json.getParent());
+		Files.writeString(json, "{\"looks\": [{\"id\": \"../x\", \"name\": \"나쁨\"}, 3, {\"id\": \"ok1\", \"name\": \"좋음\"}]}", StandardCharsets.UTF_8);
+		SettingsStore store = store(json, dir.resolve("a"), dir.resolve("b"), dir.resolve("c"));
+		store.load();
+		assertEquals(1, store.looks().size());
+		assertEquals("좋음", store.looks().get(0).name());
 	}
 }

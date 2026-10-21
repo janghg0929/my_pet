@@ -77,6 +77,22 @@ class WebSettingsPreviewTest {
 			}
 
 			@Override
+			public void saveLook() {
+			}
+
+			@Override
+			public void applyLook(String id) {
+			}
+
+			@Override
+			public void renameLook(String id) {
+			}
+
+			@Override
+			public void deleteLook(String id) {
+			}
+
+			@Override
 			public void closeSettings() {
 			}
 
@@ -220,6 +236,21 @@ class WebSettingsPreviewTest {
 		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=eyes]').click()");
 		Thread.sleep(300);
 		snapshot(settings[0], new File(out, "web-parts-eyes.png"));
+
+		// 저장한 모습: 예시 모습 7개(2쪽)를 넣어 보고, 뒤로가기가 모습 꾸미기로 가는지 본다
+		runScript(settings[0], "var s = " + STATE + "; s.looks = [];"
+			+ " for (var i = 1; i <= 7; i++) { s.looks.push({ id: 'l' + i, name: '모습 ' + i + (i == 2 ? ' 이름이 아주 긴 모습' : ''),"
+			+ " color: i % 2 ? null : '#f48fb1', parts: null }); } window.bitUpdate(s);");
+		settings[0].showViewForPreview("looks");
+		Thread.sleep(600);
+		System.out.println("looks: " + evalScript(settings[0], "document.getElementById('title').textContent")
+			+ " rows=" + evalScript(settings[0], "document.querySelectorAll('#looks-list .look').length")
+			+ " count=" + evalScript(settings[0], "document.getElementById('looks-count').textContent")
+			+ " | " + edges(settings[0].dialog()));
+		snapshot(settings[0], new File(out, "web-looks.png"));
+		runScript(settings[0], "document.querySelector('.back').click()");
+		Thread.sleep(300);
+		assertTrue("모습 꾸미기".equals(evalScript(settings[0], "document.getElementById('title').textContent")), "저장한 모습 → 뒤로가기는 모습 꾸미기");
 
 		SwingUtilities.invokeAndWait(() -> settings[0].dialog().dispose());
 		System.out.println("web preview saved: " + out.getAbsolutePath());

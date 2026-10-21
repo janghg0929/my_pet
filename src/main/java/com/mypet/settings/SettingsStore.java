@@ -4,6 +4,7 @@ import com.mypet.Constants;
 import com.mypet.Util;
 import com.mypet.appearance.AppearanceMode;
 import com.mypet.parts.PartLayout;
+import com.mypet.parts.SavedLook;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -13,9 +14,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 비트 설정을 settings.json 하나에 저장한다 (앱이 설치된 폴더 = 앱 데이터 폴더).
@@ -26,6 +29,7 @@ import java.util.Map;
  *   "customColors": ["#ffffff", ...],    // 색 선택 창의 사용자 지정 색 16칸
  *   "appearance": { "browserMonocle": "auto", ... },  // 외형별 auto / off / always
  *   "parts": { "symmetric": true, "body": {"x":0,"y":0,"w":44,"h":28,"image":null,"flip":false}, ... }  // 모습 꾸미기
+ *   "looks": [ {"id": "1a2b3c4d", "name": "고양이", "color": null, "parts": {...}}, ... ]  // 저장한 모습
  * }
  * </pre>
  * settings.json 이 없으면 예전 형식의 텍스트 파일(파이썬 버전, 2.0.0)을 찾아서 옮기고 예전 파일은 지운다.
@@ -53,6 +57,7 @@ public final class SettingsStore {
 	private final Map<String, AppearanceMode> appearance = new LinkedHashMap<>();
 	/** 모습 꾸미기 (부위 위치·크기·사진). */
 	private PartLayout parts = PartLayout.defaults();
+	private List<SavedLook> looks = new ArrayList<>();
 
 	public SettingsStore(Path file, List<Path> legacyColorPaths, List<Path> legacyCustomColorPaths, List<Path> legacyAppearancePaths) {
 		this.file = file;
@@ -114,6 +119,29 @@ public final class SettingsStore {
 		parts = layout == null ? PartLayout.defaults() : layout.copy();
 	}
 
+	/** 저장한 모습 목록 (복사본, 저장한 순서). */
+	public synchronized List<SavedLook> looks() {
+		return new ArrayList<>(looks);
+	}
+
+	public synchronized void setLooks(List<SavedLook> newLooks) {
+		looks = new ArrayList<>();
+		for (SavedLook look : newLooks) {
+			if (look != null && looks.size() < SavedLook.MAX_LOOKS) {
+				looks.add(look);
+			}
+		}
+	}
+
+	/** 지금 모습과 저장한 모습들이 쓰는 부위 사진 파일 (이 밖의 사진은 지워도 된다). */
+	public synchronized Set<String> usedImageFiles() {
+		Set<String> files = new LinkedHashSet<>(parts.imageFiles());
+		for (SavedLook look : looks) {
+			files.addAll(look.parts().imageFiles());
+		}
+		return files;
+	}
+
 	public synchronized void setAppearance(String key, AppearanceMode mode) {
 		appearance.put(key, mode == null ? AppearanceMode.AUTO : mode);
 	}
@@ -132,6 +160,11 @@ public final class SettingsStore {
 		}
 		root.put("appearance", modes);
 		root.put("parts", parts.toJson());
+		List<Object> lookItems = new ArrayList<>();
+		for (SavedLook look : looks) {
+			lookItems.add(look.toJson());
+		}
+		root.put("looks", lookItems);
 		try {
 			Files.createDirectories(file.getParent());
 			// 쓰다가 꺼져도 파일이 깨지지 않게: 임시 파일에 쓰고 바꿔 끼운다
@@ -186,6 +219,13 @@ public final class SettingsStore {
 		}
 		if (root.containsKey("parts")) {
 			parts = PartLayout.fromJson(root.get("parts"));
+		}
+		if (root.get("looks") instanceof List<?> items) {
+			List<SavedLook> read = new ArrayList<>();
+			for (Object item : items) {
+				read.add(SavedLook.fromJson(item));
+			}
+			setLooks(read);
 		}
 		if (root.get("appearance") instanceof Map<?, ?> modes) {
 			for (String key : APPEARANCE_KEYS) {

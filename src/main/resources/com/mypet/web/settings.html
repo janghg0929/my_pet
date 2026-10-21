@@ -76,7 +76,23 @@
       <label class="check"><input type="checkbox" id="parts-symmetric"> 좌우 맞추기</label>
       <button class="btn btn-small" id="parts-reset">기본 비트로</button>
     </div>
+    <div class="button-row">
+      <button class="btn" data-action="saveLook">지금 모습 저장</button>
+      <button class="btn" data-go="looks">저장한 모습 <span id="looks-count"></span></button>
+    </div>
     <p class="status" id="parts-status"></p>
+  </main>
+
+  <!-- 저장한 모습 (모습 꾸미기에서 들어온다: 뒤로가기 = 모습 꾸미기) -->
+  <main class="view" data-view="looks" hidden>
+    <p class="subtitle">저장해 둔 모습으로 언제든 바꿀 수 있어요</p>
+    <!-- 목록은 settings.js 의 renderLooks 로 만든다 (한 페이지에 5개, 높이 고정) -->
+    <section class="box option-list" id="looks-list"></section>
+    <nav class="pager" id="looks-pager" aria-label="저장한 모습 페이지"></nav>
+    <div class="button-row single">
+      <button class="btn btn-primary" data-action="saveLook">지금 모습 저장</button>
+    </div>
+    <p class="status" id="looks-status"></p>
   </main>
 
   <!-- 색깔 설정 -->

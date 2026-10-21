@@ -10,6 +10,7 @@ import com.mypet.appearance.rendering.AppearanceRendering;
 import com.mypet.appearance.rendering.Draw;
 import com.mypet.parts.PartImages;
 import com.mypet.parts.PartLayout;
+import com.mypet.parts.SavedLook;
 import com.mypet.platform.PlatformSupport;
 import com.mypet.platform.PlatformSupport.PlatformRect;
 import com.mypet.settings.Json;
@@ -25,6 +26,7 @@ import javax.swing.JComponent;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
+import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.KeyStroke;
 import javax.swing.SwingConstants;
@@ -708,6 +710,7 @@ final class PetApp implements SettingsHost {
 			+ "\"baseColor\":" + jsonString(baseCharacterColor) + ","
 			+ "\"status\":" + jsonString(webStatus) + ","
 			+ "\"parts\":" + Json.write(layout.toJson()) + ","
+			+ "\"looks\":" + Json.write(SettingsStore.get().looks().stream().map(SavedLook::toJson).toList()) + ","
 			+ "\"modes\":{"
 			+ "\"browserMonocle\":" + jsonString(browserAppearanceMode.key) + ","
 			+ "\"browserIeIcon\":" + jsonString(browserIeAppearanceMode.key) + ","
@@ -797,7 +800,7 @@ final class PetApp implements SettingsHost {
 		SettingsStore store = SettingsStore.get();
 		store.setParts(layout);
 		Path saved = store.save();
-		partImages.deleteUnused(layout.imageFiles());
+		partImages.deleteUnused(store.usedImageFiles());
 		refreshWebSettings(saved == null ? status + " (저장 실패)" : status);
 	}
 
@@ -879,6 +882,94 @@ final class PetApp implements SettingsHost {
 	@Override
 	public String partImageDataUrl(String fileName) {
 		return partImages.dataUrl(fileName);
+	}
+
+	// ---------------------------------------------------------------- 저장한 모습 (SettingsHost)
+
+	/** 모습 이름 입력 창 (Swing 창이라 한글이 바로 입력된다). 취소하면 null. */
+	private String askLookName(String title, String initial) {
+		Object answer = JOptionPane.showInputDialog(settingsDialog, "모습 이름 (" + SavedLook.MAX_NAME_LENGTH + "자까지)", title,
+			JOptionPane.PLAIN_MESSAGE, null, null, initial);
+		return answer == null ? null : SavedLook.cleanName(String.valueOf(answer));
+	}
+
+	/** 저장한 모습에 넣을 몸 색 (기본 색이면 null). */
+	private String currentLookColor() {
+		return DEFAULT_CHARACTER_COLOR.equalsIgnoreCase(baseCharacterColor) ? null : baseCharacterColor;
+	}
+
+	private static SavedLook findLook(List<SavedLook> looks, String id) {
+		for (SavedLook look : looks) {
+			if (look.id().equals(id)) {
+				return look;
+			}
+		}
+		return null;
+	}
+
+	private void saveLooks(List<SavedLook> looks, String status) {
+		SettingsStore store = SettingsStore.get();
+		store.setLooks(looks);
+		Path saved = store.save();
+		partImages.deleteUnused(store.usedImageFiles());
+		refreshWebSettings(saved == null ? status + " (저장 실패)" : status);
+	}
+
+	@Override
+	public void saveLook() {
+		List<SavedLook> looks = SettingsStore.get().looks();
+		if (looks.size() >= SavedLook.MAX_LOOKS) {
+			refreshWebSettings("모습은 " + SavedLook.MAX_LOOKS + "개까지 저장할 수 있어요");
+			return;
+		}
+		String name = askLookName("지금 모습 저장", "모습 " + (looks.size() + 1));
+		if (name == null) {
+			refreshWebSettings("저장을 취소했어요");
+			return;
+		}
+		looks.add(SavedLook.create(name, currentLookColor(), layout));
+		saveLooks(looks, "'" + name + "' 저장했어요");
+	}
+
+	@Override
+	public void applyLook(String id) {
+		SavedLook look = findLook(SettingsStore.get().looks(), id);
+		if (look == null) {
+			return;
+		}
+		if (look.color() == null) {
+			applyBaseColor(DEFAULT_CHARACTER_COLOR, false);
+		} else {
+			applyBaseColor(look.color(), true);
+		}
+		saveLayout(look.parts(), "'" + look.name() + "' 모습으로 바꿨어요");
+	}
+
+	@Override
+	public void renameLook(String id) {
+		List<SavedLook> looks = SettingsStore.get().looks();
+		SavedLook look = findLook(looks, id);
+		if (look == null) {
+			return;
+		}
+		String name = askLookName("이름 바꾸기", look.name());
+		if (name == null) {
+			refreshWebSettings("이름 바꾸기를 취소했어요");
+			return;
+		}
+		looks.set(looks.indexOf(look), look.withName(name));
+		saveLooks(looks, "이름을 '" + name + "'(으)로 바꿨어요");
+	}
+
+	@Override
+	public void deleteLook(String id) {
+		List<SavedLook> looks = SettingsStore.get().looks();
+		SavedLook look = findLook(looks, id);
+		if (look == null) {
+			return;
+		}
+		looks.remove(look);
+		saveLooks(looks, "'" + look.name() + "' 지웠어요");
 	}
 
 	@Override

@@ -10,7 +10,10 @@
     { key: "off", label: "끔" },
     { key: "always", label: "항상 켬" }
   ];
-  var TITLES = { main: "비트 설정", appearance: "외형 설정", color: "색깔 설정", parts: "모습 꾸미기" };
+  var TITLES = { main: "비트 설정", appearance: "외형 설정", color: "색깔 설정", parts: "모습 꾸미기", looks: "저장한 모습" };
+  // 뒤로가기로 돌아갈 화면 (없으면 메인)
+  var PARENT = { looks: "parts" };
+  var DEFAULT_COLOR = "#4fc3f7";
 
   // 외형 목록. 새 외형을 추가하면 여기에 한 줄 넣으면 된다 (Java 쪽 PetApp.setAppearanceMode 에도 key 추가).
   // keywords: 검색에 걸리는 말 (외형 이름, 앱 이름 - 한글/영어). 띄어쓰기와 대소문자는 무시하고 찾는다.
@@ -45,6 +48,8 @@
   var appearanceQuery = "";
   var listFullHeight = 0; // 외형 5개가 찼을 때 목록 높이 (이 높이로 고정해서 창 크기가 흔들리지 않게)
   var nativeSearch = false; // 앱 안에서는 Java(Swing) 입력칸이 검색창 자리에 겹쳐진다 (한글 입력 때문)
+  var looksPage = 1; // 저장한 모습 목록 페이지
+  var lastLookCount = -1;
 
   // 일반 브라우저로 settings.html 을 열었을 때(=Java 연결 없음) 보여줄 예시 데이터
   var DEMO_STATE = {
@@ -53,7 +58,11 @@
     petColor: "#4fc3f7",
     baseColor: "#4fc3f7",
     status: "",
-    modes: { browserMonocle: "auto", browserIeIcon: "off", discordColor: "auto", pixelHeart: "always", headset: "auto" }
+    modes: { browserMonocle: "auto", browserIeIcon: "off", discordColor: "auto", pixelHeart: "always", headset: "auto" },
+    looks: [
+      { id: "demo1", name: "기본 비트", color: null, parts: null },
+      { id: "demo2", name: "분홍 비트", color: "#f48fb1", parts: null }
+    ]
   };
 
   var state = null;
@@ -80,6 +89,9 @@
 
   /** 배치에 쓰인 부위 사진 중 아직 없는 것을 Java 에 달라고 한다 (window.bitImage 로 온다). */
   function requestImages(layout) {
+    if (!layout) {
+      return;
+    }
     var names = [];
     window.BitView.PART_KEYS.forEach(function (key) {
       var part = layout[key];
@@ -110,6 +122,7 @@
     var image = new Image();
     image.onload = function () {
       drawIcons();
+      drawLookIcons();
       if (editor) {
         editor.draw();
       }
@@ -168,6 +181,9 @@
     if (view === "parts" && editor) {
       editor.refreshControls();
       editor.draw();
+    }
+    if (view === "looks") {
+      drawLookIcons(); // 숨겨져 있을 때는 크기가 0 이라 보일 때 그린다
     }
     fitWindow();
     reportSearchBox();
@@ -296,10 +312,10 @@
     return items;
   }
 
-  function renderPager(totalPages) {
-    var pager = document.getElementById("appearance-pager");
+  /** 페이지 번호 줄을 그린다. onGo(page) 는 다른 쪽을 눌렀을 때. */
+  function renderPager(pager, page, totalPages, onGo) {
     pager.innerHTML = "";
-    pagerItems(appearancePage, totalPages).forEach(function (item) {
+    pagerItems(page, totalPages).forEach(function (item) {
       var button = document.createElement("button");
       button.textContent = item.label;
       button.className = "page" + (item.current ? " current" : "") + (item.arrow ? " arrow" : "") + (item.ellipsis ? " ellipsis" : "");
@@ -309,8 +325,7 @@
       }
       button.addEventListener("click", function () {
         if (!item.disabled && !item.current) {
-          appearancePage = item.page;
-          renderAppearanceList();
+          onGo(item.page);
         }
       });
       pager.appendChild(button);
@@ -334,7 +349,10 @@
       list.appendChild(empty);
     }
     fixListHeight(list, shown.length);
-    renderPager(totalPages);
+    renderPager(document.getElementById("appearance-pager"), appearancePage, totalPages, function (page) {
+      appearancePage = page;
+      renderAppearanceList();
+    });
     if (currentView === "appearance") {
       fitWindow();
     }
@@ -351,6 +369,101 @@
       listFullHeight = rowHeight * PAGE_SIZE + (PAGE_SIZE - 1) + frame;
     }
     list.style.minHeight = listFullHeight ? listFullHeight + "px" : "";
+  }
+
+  // ---------------------------------------------------------------- 저장한 모습
+
+  function looks() {
+    return state && state.looks ? state.looks : [];
+  }
+
+  function findLook(id) {
+    var all = looks();
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].id === id) {
+        return all[i];
+      }
+    }
+    return null;
+  }
+
+  function drawLookIcons() {
+    var icons = document.querySelectorAll("#looks-list .look-icon");
+    for (var i = 0; i < icons.length; i++) {
+      var look = findLook(icons[i].getAttribute("data-id"));
+      if (look) {
+        window.BitView.drawIcon(icons[i], look.color || DEFAULT_COLOR, look.parts || window.BitView.DEFAULT_LAYOUT);
+      }
+    }
+  }
+
+  function smallButton(label, className, onClick) {
+    var button = document.createElement("button");
+    button.className = "btn btn-small" + (className ? " " + className : "");
+    button.textContent = label;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function createLookRow(look) {
+    var row = document.createElement("div");
+    row.className = "look";
+    var icon = document.createElement("canvas");
+    icon.className = "look-icon";
+    icon.setAttribute("data-id", look.id);
+    var name = document.createElement("span");
+    name.className = "look-name";
+    name.textContent = look.name;
+    name.title = look.name;
+    var buttons = document.createElement("span");
+    buttons.className = "look-buttons";
+    buttons.appendChild(smallButton("불러오기", "btn-primary", function () { send("applyLook", look.id); }));
+    buttons.appendChild(smallButton("이름", "", function () { send("renameLook", look.id); }));
+    // 지우기는 두 번 눌러야 한다
+    var armed = false;
+    var remove = smallButton("삭제", "btn-danger", function () {
+      if (!armed) {
+        armed = true;
+        remove.textContent = "정말?";
+        setTimeout(function () {
+          armed = false;
+          remove.textContent = "삭제";
+        }, 3000);
+        return;
+      }
+      send("deleteLook", look.id);
+    });
+    buttons.appendChild(remove);
+    row.appendChild(icon);
+    row.appendChild(name);
+    row.appendChild(buttons);
+    return row;
+  }
+
+  function renderLooks() {
+    var all = looks();
+    var totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    looksPage = Math.min(Math.max(1, looksPage), totalPages);
+    var list = document.getElementById("looks-list");
+    list.innerHTML = "";
+    all.slice((looksPage - 1) * PAGE_SIZE, looksPage * PAGE_SIZE).forEach(function (look) {
+      list.appendChild(createLookRow(look));
+    });
+    if (all.length === 0) {
+      var empty = document.createElement("p");
+      empty.className = "empty";
+      empty.textContent = "아직 저장한 모습이 없어요";
+      list.appendChild(empty);
+    }
+    renderPager(document.getElementById("looks-pager"), looksPage, totalPages, function (page) {
+      looksPage = page;
+      renderLooks();
+    });
+    document.getElementById("looks-count").textContent = all.length ? "(" + all.length + ")" : "";
+    all.forEach(function (look) { requestImages(look.parts); });
+    if (currentView === "looks") {
+      drawLookIcons();
+    }
   }
 
   function render() {
@@ -376,9 +489,17 @@
     }
 
     renderAppearanceList();
+    // 새로 저장했으면 마지막 쪽(새 모습)이 보이게
+    var lookCount = looks().length;
+    if (lastLookCount >= 0 && lookCount > lastLookCount) {
+      looksPage = Math.ceil(lookCount / PAGE_SIZE);
+    }
+    lastLookCount = lookCount;
+    renderLooks();
 
     if (state.status) {
-      var target = currentView === "color" ? "color-status" : (currentView === "parts" ? "parts-status" : "appearance-status");
+      var STATUS = { color: "color-status", parts: "parts-status", looks: "looks-status" };
+      var target = STATUS[currentView] || "appearance-status";
       document.getElementById(target).textContent = state.status;
     }
     if (currentView === "color" && !state.status) {
@@ -408,7 +529,7 @@
     }
     var action = target.getAttribute("data-action");
     if (action === "back") {
-      show("main");
+      show(PARENT[currentView] || "main");
     } else {
       send(action);
     }
