@@ -446,7 +446,7 @@
     Array.prototype.forEach.call(types.querySelectorAll(".seg"), function (button) {
       var key = button.getAttribute("data-key");
       button.hidden = allowed.indexOf(key) < 0;
-      button.textContent = labels[key] || MOTION_LABELS[key];
+      window.BitView.setText(button, labels[key] || MOTION_LABELS[key]);
       button.classList.toggle("selected", key === m.type);
     });
     types.style.gridTemplateColumns = "repeat(" + allowed.length + ", 1fr)";
@@ -468,22 +468,24 @@
       if (document.activeElement !== input) {
         input.value = m[field];
       }
-      document.getElementById("motion-" + field + "-value").textContent = m[field];
+      window.BitView.setText(document.getElementById("motion-" + field + "-value"), String(m[field]));
     });
     var limb = !!MIRROR[this.selected];
     setOff("motion-alternate-row", !(limb && this.layout.symmetric));
     document.getElementById("motion-alternate").checked = !!m.alternate;
 
     var subtitle = document.getElementById("parts-subtitle");
+    var hint;
     if (advanced) {
-      subtitle.textContent = "시간을 고르고 부위를 끌거나 돌리면 ◆ 키가 생겨요";
+      hint = "시간을 고르고 부위를 끌거나 돌리면 ◆ 키가 생겨요";
     } else if (shape) {
-      subtitle.textContent = "끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전";
+      hint = "끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전";
     } else if (always) {
-      subtitle.textContent = "언제나 하는 움직임 · 자세는 다른 상황에서 잡아요";
+      hint = "언제나 하는 움직임 · 자세는 다른 상황에서 잡아요";
     } else {
-      subtitle.textContent = "'" + STATE_LABELS[this.animState] + "' 자세: 끌거나 돌려서 잡아요";
+      hint = "'" + STATE_LABELS[this.animState] + "' 자세: 끌거나 돌려서 잡아요";
     }
+    window.BitView.setText(subtitle, hint);
   };
 
   /** 화면에 보일 때 움직임 화면이면 미리보기를 움직인다. */
@@ -590,7 +592,7 @@
     document.getElementById("parts-symmetric").checked = !!this.layout.symmetric;
     var photo = document.getElementById("parts-photo");
     var label = this.selected === "eyes" ? "'" + labelOf(this.expression) + "' 눈 사진" : PART_LABELS[this.selected] + " 사진";
-    photo.textContent = (this.hasImage() ? "바꾸기: " : "넣기: ") + label;
+    window.BitView.setText(photo, (this.hasImage() ? "바꾸기: " : "넣기: ") + label);
     document.getElementById("parts-photo-remove").disabled = !this.hasImage();
 
     function labelOf(key) {

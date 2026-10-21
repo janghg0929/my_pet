@@ -36,6 +36,16 @@
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
+  /**
+   * 글자가 다를 때만 바꾼다. 누르고 있는 버튼의 글자를 (같은 글자라도) 새로 넣으면
+   * 앱 안의 웹 엔진이 그 클릭을 놓친다 (재생 중 ❚❚ 가운데를 눌러도 안 멈추던 문제).
+   */
+  function setText(el, text) {
+    if (el && el.textContent !== text) {
+      el.textContent = text;
+    }
+  }
+
   function copyLayout(layout) {
     var copy = JSON.parse(JSON.stringify(layout || DEFAULT_LAYOUT));
     PART_KEYS.forEach(function (key) {
@@ -927,6 +937,7 @@
     PART_KEYS: PART_KEYS,
     images: images,
     copyLayout: copyLayout,
+    setText: setText,
     bounds: bounds,
     motionBounds: motionBounds,
     MotionClock: MotionClock,

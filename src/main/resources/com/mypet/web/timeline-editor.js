@@ -383,22 +383,23 @@
       var hasKeys = Object.keys(self.layout.timeline[state].tracks).some(function (part) {
         return self.layout.timeline[state].tracks[part].length > 0;
       });
-      button.textContent = STATE_LABELS[state] + (hasKeys ? " ◆" : "");
+      BV.setText(button, STATE_LABELS[state] + (hasKeys ? " ◆" : ""));
     });
-    document.getElementById("tl-play").textContent = tl.playing ? "❚❚" : "▶";
+    BV.setText(document.getElementById("tl-play"), tl.playing ? "❚❚" : "▶");
     var key = this.keyAtPlayhead(this.selected);
     var values = key || this.clipValuesAt(this.selected, tl.playhead);
     FIELDS.forEach(function (field) {
       var input = document.getElementById("tl-" + field);
-      if (document.activeElement !== input) {
+      if (document.activeElement !== input && input.value !== String(values[field])) {
         input.value = values[field];
       }
     });
     document.getElementById("tl-delete").disabled = !key;
     document.getElementById("tl-add").disabled = !!key;
     var duration = document.getElementById("tl-duration");
-    if (document.activeElement !== duration) {
-      duration.value = (clip.duration / 1000).toFixed(1);
+    var seconds = (clip.duration / 1000).toFixed(1);
+    if (document.activeElement !== duration && duration.value !== seconds) {
+      duration.value = seconds;
     }
     document.getElementById("tl-loop").checked = clip.loop;
     document.getElementById("tl-continue").checked = !clip.restart;
@@ -410,18 +411,26 @@
         options.push([name, "사진 " + (i + 1)]);
       });
       options.push(["@pick", "새 사진…"]);
-      keyPhoto.innerHTML = "";
-      options.forEach(function (o) {
-        var option = document.createElement("option");
-        option.value = o[0];
-        option.textContent = o[1];
-        keyPhoto.appendChild(option);
-      });
-      keyPhoto.value = key && key.photo ? key.photo : "";
+      // 목록이 바뀔 때만 새로 만든다 (재생 중 매 프레임 다시 만들면 고르는 중에 닫힌다)
+      var signature = JSON.stringify(options);
+      if (keyPhoto.getAttribute("data-options") !== signature) {
+        keyPhoto.setAttribute("data-options", signature);
+        keyPhoto.innerHTML = "";
+        options.forEach(function (o) {
+          var option = document.createElement("option");
+          option.value = o[0];
+          option.textContent = o[1];
+          keyPhoto.appendChild(option);
+        });
+      }
+      var selectedPhoto = key && key.photo ? key.photo : "";
+      if (keyPhoto.value !== selectedPhoto) {
+        keyPhoto.value = selectedPhoto;
+      }
     }
     var keyHasPhoto = !!(key && key.photo);
     var photo = document.getElementById("tl-photo");
-    photo.textContent = keyHasPhoto ? "사진 바꾸기" : "사진 넣기";
+    BV.setText(photo, keyHasPhoto ? "사진 바꾸기" : "사진 넣기");
     photo.title = (tl.playhead / 1000).toFixed(2) + "초부터 " + ROW_LABELS[this.selected] + " 사진 바꾸기 (키에 저장)";
     document.getElementById("tl-photo-remove").disabled = !keyHasPhoto;
     var ease = document.getElementById("tl-ease");

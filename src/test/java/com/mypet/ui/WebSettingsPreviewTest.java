@@ -407,6 +407,32 @@ class WebSettingsPreviewTest {
 		System.out.println("after play: playhead=" + evalScript(settings[0], "String(window.bitPartsEditor.tl.playhead)")
 			+ " playing=" + evalScript(settings[0], "String(window.bitPartsEditor.tl.playing)"));
 		assertTrue("800".equals(evalScript(settings[0], "String(window.bitPartsEditor.tl.playhead)")), "끝에서 멈춤");
+
+		// 진짜 마우스로 누르기(누른 채 0.15초): 재생 중인 [▶/❚❚] 가운데를 눌러도 멈춰야 한다 (예전엔 매 프레임 글자를 바꿔서 안 멈춤)
+		runScript(settings[0], "document.querySelector('#tl-states [data-key=idle]').click();"
+			+ " var ed = window.bitPartsEditor; ed.tl.playhead = 0; ed.refreshControls();");
+		String[][] spots = {{"center", "0.5", "0.5"}, {"top-left edge", "0.06", "0.1"}};
+		for (String[] spot : spots) {
+			runScript(settings[0], "if (!window.bitPartsEditor.tl.playing) { document.getElementById('tl-play').click(); }");
+			Thread.sleep(300);
+			String at = evalScript(settings[0], "var b = document.getElementById('tl-play').getBoundingClientRect();"
+				+ " Math.round(b.left + b.width * " + spot[1] + ") + ',' + Math.round(b.top + b.height * " + spot[2] + ")");
+			realClick(panel, at, 150);
+			Thread.sleep(250);
+			String playing = evalScript(settings[0], "String(window.bitPartsEditor.tl.playing)");
+			System.out.println("real click on playing ▶ (" + spot[0] + " " + at + "): playing=" + playing);
+			assertTrue("false".equals(playing), "재생 중 버튼 " + spot[0] + " 을 눌러도 멈춰야 함");
+		}
+		// 다른 버튼도 가장자리를 눌러서 되는지: [일반] 탭 왼쪽 위 가장자리
+		String levelEdge = evalScript(settings[0], "var b = document.querySelector('#parts-level [data-level=basic]').getBoundingClientRect();"
+			+ " Math.round(b.left + 2) + ',' + Math.round(b.top + 2)");
+		realClick(panel, levelEdge, 150);
+		Thread.sleep(250);
+		String level = evalScript(settings[0], "window.bitPartsEditor.level");
+		System.out.println("real click on [일반] edge " + levelEdge + ": level=" + level);
+		assertTrue("basic".equals(level), "탭 가장자리를 눌러도 바뀌어야 함");
+		runScript(settings[0], "document.querySelector('#parts-level [data-level=advanced]').click()");
+		Thread.sleep(200);
 		runScript(settings[0], "document.querySelector('#parts-level [data-level=basic]').click()");
 		Thread.sleep(200);
 
@@ -462,6 +488,26 @@ class WebSettingsPreviewTest {
 			image[0] = img;
 		});
 		javax.imageio.ImageIO.write(image[0], "png", file);
+	}
+
+	/** 실제 마우스처럼 누르고(hold ms 기다렸다) 떼기: Swing → JavaFX → 웹 엔진이 mousedown/up/click 을 만든다. */
+	private static void realClick(java.awt.Component panel, String xy, int holdMs) throws Exception {
+		String[] parts = xy.split(",");
+		int x = Integer.parseInt(parts[0]);
+		int y = Integer.parseInt(parts[1]);
+		SwingUtilities.invokeAndWait(() -> {
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_MOVED,
+				System.currentTimeMillis(), 0, x, y, 0, false));
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_PRESSED,
+				System.currentTimeMillis(), java.awt.event.InputEvent.BUTTON1_DOWN_MASK, x, y, 1, false, java.awt.event.MouseEvent.BUTTON1));
+		});
+		Thread.sleep(holdMs);
+		SwingUtilities.invokeAndWait(() -> {
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_RELEASED,
+				System.currentTimeMillis(), 0, x, y, 1, false, java.awt.event.MouseEvent.BUTTON1));
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_CLICKED,
+				System.currentTimeMillis(), 0, x, y, 1, false, java.awt.event.MouseEvent.BUTTON1));
+		});
 	}
 
 	private static String edges(JDialog dialog) {

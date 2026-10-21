@@ -367,22 +367,33 @@
     var totalPages = Math.max(1, Math.ceil(found.length / PAGE_SIZE));
     appearancePage = Math.min(Math.max(1, appearancePage), totalPages);
     var list = document.getElementById("appearance-list");
-    list.innerHTML = "";
     var shown = found.slice((appearancePage - 1) * PAGE_SIZE, appearancePage * PAGE_SIZE);
-    shown.forEach(function (item) {
-      list.appendChild(createOption(item));
-    });
-    if (found.length === 0) {
-      var empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = "검색 결과가 없어요";
-      list.appendChild(empty);
+    // 보이는 외형이 그대로면 선택만 고친다 (상태가 올 때마다 다시 만들면 누르는 중인 버튼이 사라져 클릭을 놓친다)
+    var signature = JSON.stringify([shown.map(function (item) { return item.key; }), appearancePage, totalPages, !!(state && state.isMac)]);
+    if (list.getAttribute("data-shown") === signature && listFullHeight) {
+      Array.prototype.forEach.call(list.querySelectorAll(".option"), function (option) {
+        if (state && state.modes) {
+          selectMode(option, state.modes[option.getAttribute("data-key")]);
+        }
+      });
+    } else {
+      list.setAttribute("data-shown", signature);
+      list.innerHTML = "";
+      shown.forEach(function (item) {
+        list.appendChild(createOption(item));
+      });
+      if (found.length === 0) {
+        var empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "검색 결과가 없어요";
+        list.appendChild(empty);
+      }
+      fixListHeight(list, shown.length);
+      renderPager(document.getElementById("appearance-pager"), appearancePage, totalPages, function (page) {
+        appearancePage = page;
+        renderAppearanceList();
+      });
     }
-    fixListHeight(list, shown.length);
-    renderPager(document.getElementById("appearance-pager"), appearancePage, totalPages, function (page) {
-      appearancePage = page;
-      renderAppearanceList();
-    });
     if (currentView === "appearance") {
       fitWindow();
     }
@@ -475,21 +486,27 @@
     var totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
     looksPage = Math.min(Math.max(1, looksPage), totalPages);
     var list = document.getElementById("looks-list");
-    list.innerHTML = "";
-    all.slice((looksPage - 1) * PAGE_SIZE, looksPage * PAGE_SIZE).forEach(function (look) {
-      list.appendChild(createLookRow(look));
-    });
-    if (all.length === 0) {
-      var empty = document.createElement("p");
-      empty.className = "empty";
-      empty.textContent = "아직 저장한 모습이 없어요";
-      list.appendChild(empty);
+    var shown = all.slice((looksPage - 1) * PAGE_SIZE, looksPage * PAGE_SIZE);
+    // 보이는 모습이 그대로면 그림만 다시 (다시 만들면 누르는 중인 버튼이 사라지고, "정말?" 도 풀린다)
+    var signature = JSON.stringify([shown.map(function (look) { return [look.id, look.name, look.color, look.parts]; }), looksPage, totalPages]);
+    if (list.getAttribute("data-shown") !== signature) {
+      list.setAttribute("data-shown", signature);
+      list.innerHTML = "";
+      shown.forEach(function (look) {
+        list.appendChild(createLookRow(look));
+      });
+      if (all.length === 0) {
+        var empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "아직 저장한 모습이 없어요";
+        list.appendChild(empty);
+      }
+      renderPager(document.getElementById("looks-pager"), looksPage, totalPages, function (page) {
+        looksPage = page;
+        renderLooks();
+      });
     }
-    renderPager(document.getElementById("looks-pager"), looksPage, totalPages, function (page) {
-      looksPage = page;
-      renderLooks();
-    });
-    document.getElementById("looks-count").textContent = all.length ? "(" + all.length + ")" : "";
+    window.BitView.setText(document.getElementById("looks-count"), all.length ? "(" + all.length + ")" : "");
     all.forEach(function (look) { requestImages(look.parts); });
     if (currentView === "looks") {
       drawLookIcons();
@@ -504,8 +521,8 @@
     root.setProperty("--pet", state.petColor);
     root.setProperty("--pet-light", lighten(state.petColor));
 
-    document.getElementById("version").textContent = "v" + state.version;
-    document.getElementById("hex").textContent = state.baseColor.toUpperCase();
+    window.BitView.setText(document.getElementById("version"), "v" + state.version);
+    window.BitView.setText(document.getElementById("hex"), state.baseColor.toUpperCase());
     var layout = currentLayout();
     requestImages(layout);
     drawIcons();

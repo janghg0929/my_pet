@@ -176,6 +176,29 @@ button {
   box-shadow: none;
 }
 
+/*
+  밀린 만큼 위·왼쪽이 마우스 밑에서 빠져나가면, 가장자리를 눌렀다 뗄 때 클릭이 안 된다.
+  누르는 동안만 위·왼쪽으로 누를 자리를 넓혀 둔다 (보이지는 않음).
+*/
+.menu-row,
+.btn,
+.seg,
+.page {
+  position: relative;
+}
+
+.menu-row:active::before,
+.btn:active::before,
+.seg:active::before,
+.page:active::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  left: -6px;
+  right: 0;
+  bottom: 0;
+}
+
 /* ---------- 버튼 ---------- */
 .btn {
   min-width: 72px;
