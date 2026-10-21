@@ -630,9 +630,48 @@
     return image && image.complete && image.naturalWidth > 0 ? image : null;
   }
 
+  // 도트 그림의 "몸 색" 칸 (알파 254) → 지금 몸 색 (PartImages.tinted 와 같다)
+  var BODY_ALPHA = 254;
+
+  function tintedImage(image, color) {
+    if (!image || !image.pixelArt || !color || color.charAt(0) !== "#") {
+      return image;
+    }
+    image.tints = image.tints || {};
+    if (image.tints[color]) {
+      return image.tints[color];
+    }
+    var c = document.createElement("canvas");
+    c.width = image.naturalWidth || image.width;
+    c.height = image.naturalHeight || image.height;
+    var g = c.getContext("2d");
+    g.drawImage(image, 0, 0);
+    var data = g.getImageData(0, 0, c.width, c.height);
+    var d = data.data;
+    var n = parseInt(color.slice(1), 16);
+    var found = false;
+    for (var i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === BODY_ALPHA) {
+        d[i] = (n >> 16) & 255;
+        d[i + 1] = (n >> 8) & 255;
+        d[i + 2] = n & 255;
+        d[i + 3] = 255;
+        found = true;
+      }
+    }
+    var result = image;
+    if (found) {
+      g.putImageData(data, 0, 0);
+      c.pixelArt = true;
+      result = c;
+    }
+    image.tints[color] = result;
+    return result;
+  }
+
   function drawImage(ctx, image, x, y, w, h, flip) {
     ctx.save();
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = !image.pixelArt; // 도트 그림은 또렷하게
     if (flip) {
       ctx.translate(x + w, y);
       ctx.scale(-1, 1);
@@ -653,6 +692,7 @@
       image = keyImage;
       flip = photo.flip;
     }
+    image = tintedImage(image, color);
     ctx.save();
     applyPartTransform(ctx, part, ox + x * k, oy + y * k, mt, k);
     if (image) {
@@ -698,7 +738,7 @@
       drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color, mt("rightLeg"), photo("rightLeg"));
     }
     if (shown("eyes")) {
-      drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"), photo("eyes"));
+      drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"), photo("eyes"), color);
     }
     customKeys(L).forEach(function (key) {
       if (shown(key)) {
@@ -718,7 +758,7 @@
   }
 
   // 눈: 표정별 사진이 있으면 사진, 없으면 기본 눈을 눈 영역에 맞춰 늘려 그린다
-  function drawEyes(ctx, ox, oy, k, p, eyes, mt, photo) {
+  function drawEyes(ctx, ox, oy, k, p, eyes, mt, photo, color) {
     var expression = expressionOf(p);
     var image = loadedImage(eyes.images && eyes.images[expression]);
     var flip = false;
@@ -727,6 +767,7 @@
       image = keyImage;
       flip = photo.flip;
     }
+    image = tintedImage(image, color);
     ctx.save();
     applyPartTransform(ctx, eyes, ox + eyes.x * k, oy + eyes.y * k, mt, k);
     if (image) {

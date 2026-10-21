@@ -929,6 +929,18 @@ final class PetApp implements SettingsHost {
 	}
 
 	@Override
+	public String saveDrawing(String dataUrl) {
+		try {
+			String base64 = dataUrl.substring(dataUrl.indexOf(',') + 1);
+			BufferedImage drawn = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(java.util.Base64.getDecoder().decode(base64)));
+			return partImages.importPixelArt(drawn);
+		} catch (java.io.IOException | RuntimeException e) {
+			refreshWebSettings("그림을 저장하지 못했어요");
+			return null;
+		}
+	}
+
+	@Override
 	public String askText(String title, String initial) {
 		Object answer = JOptionPane.showInputDialog(settingsDialog, "이름 (" + PartLayout.MAX_NAME_LENGTH + "자까지)", title,
 			JOptionPane.PLAIN_MESSAGE, null, null, initial);
@@ -2101,16 +2113,16 @@ final class PetApp implements SettingsHost {
 	 */
 	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color, PartAnimation.Transform motion,
 		PartTimeline.Photo photo) {
-		BufferedImage image = partImages.get(part.image);
+		String imageName = part.image;
 		boolean flip = part.flip;
-		if (photo != null && !photo.base()) {
+		if (photo != null && !photo.base() && partImages.get(photo.name()) != null) {
 			// 시간 막대 키가 바꾼 사진 (못 읽으면 원래대로)
-			BufferedImage keyImage = partImages.get(photo.name());
-			if (keyImage != null) {
-				image = keyImage;
-				flip = photo.flip();
-			}
+			imageName = photo.name();
+			flip = photo.flip();
 		}
+		// 도트 그림은 "몸 색" 칸을 지금 몸 색으로, 픽셀이 뭉개지지 않게
+		BufferedImage image = partImages.tinted(imageName, color);
+		boolean pixel = PartImages.isPixelArt(imageName);
 		if (part.rotation == 0 && motion.rotation() == 0) {
 			// 돌리지 않으면 픽셀이 딱 맞게 그린다 (애니메이션은 위치와 크기만 바꾼다)
 			double[] pivot = part.pivotPoint();
@@ -2125,7 +2137,7 @@ final class PetApp implements SettingsHost {
 			} else if (image == null) {
 				Draw.rect(g, left, top, left + w, top + h, color, "#000000", border);
 			} else {
-				drawImage(g, image, left, top, w, h, flip);
+				drawImage(g, image, left, top, w, h, flip, pixel);
 			}
 			return;
 		}
@@ -2135,7 +2147,7 @@ final class PetApp implements SettingsHost {
 			double top = Util.pyRound(y);
 			applyPartTransform(gr, part, left, top, motion);
 			if (image != null) {
-				drawImage(gr, image, left, top, part.w, part.h, flip);
+				drawImage(gr, image, left, top, part.w, part.h, flip, pixel);
 				return;
 			}
 			// 돌린 네모는 계단처럼 보이지 않게 부드럽게 그린다 (바깥을 테두리 색으로 채우고 안쪽을 몸 색으로)
@@ -2175,10 +2187,11 @@ final class PetApp implements SettingsHost {
 		}
 	}
 
-	private static void drawImage(Graphics2D g, BufferedImage image, double x, double y, double w, double h, boolean flip) {
+	private static void drawImage(Graphics2D g, BufferedImage image, double x, double y, double w, double h, boolean flip, boolean pixel) {
 		Graphics2D gi = (Graphics2D) g.create();
 		try {
-			gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+			gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, pixel
+				? RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR : RenderingHints.VALUE_INTERPOLATION_BILINEAR);
 			gi.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 			gi.translate(x, y);
 			if (flip) {
@@ -2216,17 +2229,18 @@ final class PetApp implements SettingsHost {
 			case EXPR_FALL -> PartLayout.EXPR_FALL;
 			default -> PartLayout.EXPR_NEUTRAL;
 		};
-		BufferedImage eyeImage = partImages.get(layout.eyeImage(expressionKey));
+		String eyeName = layout.eyeImage(expressionKey);
 		boolean flip = false;
 		PartTimeline.Photo photo = photoOf(PartLayout.EYES);
 		if (photo != null && !photo.base() && partImages.get(photo.name()) != null) {
 			// 시간 막대 키가 바꾼 눈 사진
-			eyeImage = partImages.get(photo.name());
+			eyeName = photo.name();
 			flip = photo.flip();
 		}
+		BufferedImage eyeImage = partImages.tinted(eyeName, currentCharacterColor);
 		if (eyeImage != null) {
 			drawImage(graphics, eyeImage, charOriginX + eyes.x + eyeDrawnShift + eyeDrawnInvalidOffset,
-				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, flip);
+				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, flip, PartImages.isPixelArt(eyeName));
 			return;
 		}
 

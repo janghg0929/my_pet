@@ -126,6 +126,13 @@
     });
   }
 
+  // (Java 가 부름) 도트 그림판 그림을 저장했다 (실패면 null)
+  window.bitDrawingSaved = function (name) {
+    if (editor && editor.onDrawingSaved) {
+      editor.onDrawingSaved(name);
+    }
+  };
+
   // (Java 가 부름) 이름 입력 창의 대답 (취소면 null)
   window.bitTextAnswer = function (text) {
     if (editor && editor.onTextAnswer) {
@@ -146,6 +153,7 @@
       return;
     }
     var image = new Image();
+    image.pixelArt = /^px_/.test(name); // 도트 그림: 픽셀이 뭉개지지 않게, 몸 색 칸은 몸 색으로
     image.onload = function () {
       drawIcons();
       drawLookIcons();

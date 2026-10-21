@@ -458,6 +458,19 @@ public final class WebSettings implements SettingsHost.View {
 			});
 		}
 
+		/** 도트 그림판 그림 저장 → window.bitDrawingSaved(파일 이름 또는 null). */
+		public void saveDrawing(Object dataUrl) {
+			String data = dataUrl == null ? "" : String.valueOf(dataUrl);
+			SwingUtilities.invokeLater(() -> {
+				String name = host.saveDrawing(data);
+				Platform.runLater(() -> {
+					if (loaded) {
+						engine.executeScript("window.bitDrawingSaved && window.bitDrawingSaved(" + (name == null ? "null" : jsString(name)) + ")");
+					}
+				});
+			});
+		}
+
 		/** 글자 묻기 (부위 이름 등) → window.bitTextAnswer(글자 또는 null). */
 		public void askText(Object title, Object initial) {
 			String titleText = title == null ? "" : String.valueOf(title);

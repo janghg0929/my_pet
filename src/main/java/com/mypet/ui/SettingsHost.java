@@ -25,6 +25,9 @@ public interface SettingsHost {
 	/** 고급 시간 막대: 사진 파일을 골라 parts 폴더로 가져오고 파일 이름을 돌려준다 (취소하면 null). */
 	String importPartImage();
 
+	/** 도트 그림판 그림(PNG data URL)을 parts 폴더에 저장하고 파일 이름을 돌려준다 (실패하면 null). */
+	String saveDrawing(String dataUrl);
+
 	/** 글자 입력 창 (Swing: 한글이 바로 입력된다). 취소하면 null. */
 	String askText(String title, String initial);
 

@@ -37,6 +37,7 @@ class WebSettingsPreviewTest {
 
 		java.util.concurrent.atomic.AtomicReference<String> sentParts = new java.util.concurrent.atomic.AtomicReference<>();
 		java.util.concurrent.atomic.AtomicReference<String> askedText = new java.util.concurrent.atomic.AtomicReference<>();
+		java.util.concurrent.atomic.AtomicReference<String> drawnImage = new java.util.concurrent.atomic.AtomicReference<>();
 		SettingsHost host = new SettingsHost() {
 			@Override
 			public String settingsStateJson() {
@@ -66,6 +67,12 @@ class WebSettingsPreviewTest {
 
 			@Override
 			public void removePartImage(String part, String expression) {
+			}
+
+			@Override
+			public String saveDrawing(String dataUrl) {
+				drawnImage.set(dataUrl);
+				return "px_drawtest.png";
 			}
 
 			@Override
@@ -303,6 +310,36 @@ class WebSettingsPreviewTest {
 		assertTrue(hidden && back && "긴 꼬리".equals(renamed) && "true".equals(builtinDelete) && deleted, "빼기/가져오기/이름 수정/삭제");
 		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=body]').click()");
 
+		// 도트 그림판: 몸통 [그리기] → 44×28칸(몸 색 네모 + 외곽선에서 시작) → 빨간 점 하나 → [저장] → 몸통 사진이 그 그림
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=body]').click(); document.getElementById('parts-draw').click();"
+			+ " var p = window.bitPartsEditor.painter; var c = document.getElementById('paint-canvas'); var r = c.getBoundingClientRect(); var l = p.layout();"
+			+ " document.querySelector('.paint-swatch[data-color=\"#e53935\"]').click();"
+			+ " c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: r.left + l.ox + l.cell * 5.5, clientY: r.top + l.oy + l.cell * 5.5 }));"
+			+ " document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));");
+		Thread.sleep(300);
+		String painterInfo = evalScript(settings[0], "document.getElementById('paint-title').textContent + ' ' + document.getElementById('paint-size').textContent");
+		snapshot(settings[0], new File(out, "web-parts-painter.png"));
+		runScript(settings[0], "document.getElementById('paint-save').click()");
+		Thread.sleep(700);
+		String bodyImage = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body().image;
+		java.awt.image.BufferedImage drawn = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
+			java.util.Base64.getDecoder().decode(drawnImage.get().substring(drawnImage.get().indexOf(',') + 1))));
+		int bodyCells = 0;
+		for (int y = 0; y < drawn.getHeight(); y++) {
+			for (int x = 0; x < drawn.getWidth(); x++) {
+				if ((drawn.getRGB(x, y) >>> 24) == com.mypet.parts.PartImages.BODY_ALPHA) {
+					bodyCells++;
+				}
+			}
+		}
+		System.out.println("painter: " + painterInfo + " → saved " + drawn.getWidth() + "x" + drawn.getHeight()
+			+ " body-colour cells=" + bodyCells + " red at (5,5)=" + Integer.toHexString(drawn.getRGB(5, 5)) + " → body image=" + bodyImage);
+		assertTrue(drawn.getWidth() == 60 && drawn.getHeight() == 28 && bodyCells > 500 // 몸통은 앞에서 너비 60 으로 바꿨다
+			&& (drawn.getRGB(5, 5) & 0xFFFFFF) == 0xE53935 && "px_drawtest.png".equals(bodyImage), "도트 그림판으로 몸통 그리기");
+		// 되돌리기로 원래 몸통으로
+		runScript(settings[0], "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))");
+		Thread.sleep(400);
+
 		// 회전: 몸통 20도, 왼팔 35도 (좌우 맞추기로 오른팔은 -35도), 눈 -10도
 		runScript(settings[0], "function turn(part, deg) { document.querySelector('#parts-tabs [data-part=' + part + ']').click();"
 			+ " var r = document.getElementById('parts-rotation'); r.value = String(deg); r.dispatchEvent(new Event('input')); }"
@@ -433,6 +470,13 @@ class WebSettingsPreviewTest {
 		assertTrue(photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart, "키 사진 / 이어서");
 		snapshot(settings[0], new File(out, "web-parts-keyphoto.png"));
 		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
+		// 고급 [그리기]: 지금 시간(0.6초) 키에 그린 그림이 들어간다
+		runScript(settings[0], "document.getElementById('tl-draw').click(); document.getElementById('paint-save').click();");
+		Thread.sleep(700);
+		com.mypet.parts.PartTimeline.Photo drawnKey = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()))
+			.timeline.clips.get("air").photoAt("leftArm", 700);
+		System.out.println("timeline draw: key photo=" + drawnKey);
+		assertTrue(drawnKey != null && "px_drawtest.png".equals(drawnKey.name()), "고급 그리기 → 지금 시간 키 사진");
 		// [사진 빼기]: 그 키의 사진을 뺀다
 		runScript(settings[0], "document.getElementById('tl-photo-remove').click()");
 		Thread.sleep(500);

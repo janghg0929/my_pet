@@ -84,6 +84,7 @@
     this.committedKey = null;
     // 마우스 휠로 확대했으면 자동으로 다시 맞추지 않는다
     this.zoomed = false;
+    this.painter = window.PixelPainter ? new window.PixelPainter() : null;
     this.build();
     this.buildMotion();
     if (this.initTimeline) {
@@ -132,6 +133,7 @@
     document.getElementById("parts-photo-remove").addEventListener("click", function () {
       self.send("removePartImage", self.selected, self.expression);
     });
+    document.getElementById("parts-draw").addEventListener("click", function () { self.openPainter("part"); });
     var reset = document.getElementById("parts-reset");
     reset.addEventListener("click", function () {
       if (!self.resetArmed) {
@@ -163,6 +165,13 @@
     // Ctrl+Z 되돌리기, Ctrl+Y / Ctrl+Shift+Z 다시 하기 (모습 꾸미기 화면에서만)
     document.addEventListener("keydown", function (event) {
       if (!self.visible) {
+        return;
+      }
+      // 그림판이 열려 있으면 그림판 키 (Ctrl+Z/Y 는 그림판 되돌리기, Esc 는 닫기)
+      if (self.painter && self.painter.isOpen()) {
+        if (self.painter.handleKey(event)) {
+          event.preventDefault();
+        }
         return;
       }
       if (!(event.ctrlKey || event.metaKey)) {
@@ -210,6 +219,88 @@
         self.resetZoom();
       }
     });
+  };
+
+  // ---------------------------------------------------------------- 도트 그림판
+
+  /**
+   * 고른 부위를 그림판으로 그린다. mode "part" = 부위 사진(눈은 고른 표정), "key" = 고급 시간 막대의 지금 시간 키.
+   * 지금 그림(사진)이 있으면 그걸로, 없으면 지금 모습(몸 색 네모/검은 점)으로 시작한다.
+   */
+  PartsEditor.prototype.openPainter = function (mode) {
+    var self = this;
+    if (!this.painter) {
+      return;
+    }
+    var key = this.selected;
+    var part = this.part();
+    var name;
+    var title = "그리기 · " + window.BitView.partName(this.layout, key);
+    var pending = { mode: mode, key: key, expression: this.expression };
+    if (mode === "key") {
+      var photo = window.BitView.clipPhotoAt(this.clip(), key, this.tl.playhead);
+      name = photo && photo.name !== window.BitView.BASE_PHOTO ? photo.name : null;
+      pending.state = this.tl.state;
+      pending.t = this.tl.playhead;
+      title += " · " + (this.tl.playhead / 1000).toFixed(2) + "초";
+    }
+    if (!name) {
+      name = key === "eyes" ? (part.images && part.images[mode === "key" ? "neutral" : this.expression]) : part.image;
+    }
+    if (key === "eyes" && mode === "part") {
+      title += " (" + { neutral: "평소", grab: "잡혔을 때", fall: "떨어질 때" }[this.expression] + ")";
+    }
+    var image = name ? window.BitView.images[name] : null;
+    document.getElementById("parts-add-panel").hidden = true;
+    this.painter.open({
+      title: title,
+      width: part.w,
+      height: part.h,
+      image: image && image.complete && image.naturalWidth > 0 ? image : null,
+      base: key === "eyes" ? "none" : (part.shape === "dot" ? "dot" : "rect"),
+      bodyColor: this.getColor,
+      onSave: function (url) {
+        pending.url = url;
+        self.pendingDrawing = pending;
+        self.send("saveDrawing", url);
+      }
+    });
+  };
+
+  /** (Java 가 부름) 그림을 parts 폴더에 저장했다: 부위 사진 또는 시간 막대 키에 넣는다. 실패면 null. */
+  PartsEditor.prototype.onDrawingSaved = function (name) {
+    var pending = this.pendingDrawing;
+    this.pendingDrawing = null;
+    if (!pending || !name) {
+      return;
+    }
+    // Java 에서 다시 받지 않아도 바로 보이게 그린 그림을 넣어 둔다
+    var image = new Image();
+    image.pixelArt = true;
+    image.src = pending.url;
+    window.BitView.images[name] = image;
+    var self = this;
+    image.onload = function () { self.draw(); };
+    if (pending.mode === "key") {
+      this.tl.pendingPhoto = { state: pending.state, part: pending.key, t: pending.t };
+      this.onPickedImage(name);
+      return;
+    }
+    var part = this.layout[pending.key];
+    if (!part) {
+      return;
+    }
+    if (pending.key === "eyes") {
+      part.images = part.images || {};
+      part.images[pending.expression] = name;
+    } else {
+      part.image = name;
+      part.flip = false;
+    }
+    this.afterChange(pending.key);
+    this.refreshControls();
+    this.draw();
+    this.commit(0);
   };
 
   // ---------------------------------------------------------------- 부위 추가/빼기

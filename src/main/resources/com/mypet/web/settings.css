@@ -463,6 +463,135 @@ button {
   margin-bottom: 3px;
 }
 
+/* 사진 넣기 / 빼기 / 그리기 */
+.button-row.three {
+  grid-template-columns: 1.4fr 1fr 1fr;
+}
+
+/* 도트 그림판 */
+.paint-panel {
+  position: absolute;
+  left: 16px;
+  right: 19px;
+  top: 46px;
+  z-index: 12;
+  padding: 10px 12px 10px;
+}
+
+.paint-panel[hidden] {
+  display: none;
+}
+
+.paint-head-buttons {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paint-size {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.paint-tools {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.paint-tools .seg {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
+}
+
+.paint-tools .btn-small {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.paint-scale {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.paint-scale select {
+  min-width: 58px;
+  height: 24px;
+  border: var(--border) solid var(--ink);
+  background: var(--box);
+  font: inherit;
+  font-size: 12px;
+}
+
+.paint-canvas {
+  display: block;
+  width: 100%;
+  height: 300px;
+  margin-top: 10px;
+  cursor: crosshair;
+}
+
+.paint-palette {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.paint-swatches {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.paint-swatch {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--ink);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.paint-swatch.selected {
+  outline: 2px solid var(--ink);
+  outline-offset: 1px;
+}
+
+.paint-current {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border: var(--border) solid var(--ink);
+}
+
+.paint-hex {
+  flex: none;
+  width: 76px;
+  height: 26px;
+  padding: 0 6px;
+  border: var(--border) solid var(--ink);
+  background: var(--box);
+  font-family: var(--mono);
+  font-size: 12px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.paint-hint {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 /* 부위 추가 창 */
 .view[data-view="parts"] {
   position: relative;

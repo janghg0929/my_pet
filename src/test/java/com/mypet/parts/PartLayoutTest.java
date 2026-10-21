@@ -165,6 +165,25 @@ class PartLayoutTest {
 	}
 
 	@Test
+	void pixelArtKeepsSizeAndBodyColorCellsFollowTheColor(@TempDir Path dir) throws Exception {
+		BufferedImage drawn = new BufferedImage(4, 2, BufferedImage.TYPE_INT_ARGB);
+		drawn.setRGB(0, 0, 0xFF000000); // 검은 칸
+		drawn.setRGB(1, 0, (PartImages.BODY_ALPHA << 24)); // 몸 색 칸
+		PartImages images = new PartImages(dir.resolve("parts"));
+		String name = images.importPixelArt(drawn);
+		assertTrue(PartImages.isPixelArt(name) && PartLayout.safeFileName(name) != null);
+		// 파일로 저장했다 다시 읽어도 몸 색 칸 표시(알파 254)가 남는다
+		BufferedImage read = new PartImages(dir.resolve("parts")).get(name);
+		assertEquals(4, read.getWidth());
+		assertEquals(PartImages.BODY_ALPHA, read.getRGB(1, 0) >>> 24);
+		BufferedImage blue = images.tinted(name, "#4fc3f7");
+		assertEquals(0xFF4FC3F7, blue.getRGB(1, 0));
+		assertEquals(0xFF000000, blue.getRGB(0, 0));
+		assertEquals(0, blue.getRGB(2, 1) >>> 24); // 빈칸은 투명 그대로
+		assertEquals(0xFFF48FB1, images.tinted(name, "#f48fb1").getRGB(1, 0));
+	}
+
+	@Test
 	void importedImagesAreShrunkAndUnusedOnesDeleted(@TempDir Path dir) throws Exception {
 		File source = dir.resolve("photo.png").toFile();
 		ImageIO.write(new BufferedImage(1000, 500, BufferedImage.TYPE_INT_ARGB), "png", source);

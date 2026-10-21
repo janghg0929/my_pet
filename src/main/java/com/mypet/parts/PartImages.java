@@ -19,12 +19,19 @@ import java.util.UUID;
 
 /**
  * 부위 사진 파일 (앱 데이터 폴더의 parts 폴더). 사용자가 고른 사진은 최대 256px PNG 로 줄여서 복사해 둔다.
+ * 도트 그림판으로 그린 그림은 "px_" 로 시작하는 이름으로 저장하고, 픽셀이 뭉개지지 않게 그린다.
+ * 그림에서 알파가 {@link #BODY_ALPHA} 인 칸은 "몸 색" 칸이라 지금 몸 색으로 바꿔 그린다.
  */
 public final class PartImages {
 	public static final int MAX_SIDE = 256;
+	/** 도트 그림의 "몸 색" 칸 표시 (이 알파값인 픽셀은 지금 몸 색으로 칠한다). painter.js 와 같다. */
+	public static final int BODY_ALPHA = 254;
+	private static final String PIXEL_PREFIX = "px_";
 
 	private final Path dir;
 	private final Map<String, BufferedImage> cache = new HashMap<>();
+	/** 몸 색을 칠한 도트 그림 ("이름|색" → 그림). */
+	private final Map<String, BufferedImage> tintCache = new HashMap<>();
 
 	public PartImages(Path dir) {
 		this.dir = dir;
@@ -51,6 +58,73 @@ public final class PartImages {
 		ImageIO.write(scaled, "png", dir.resolve(name).toFile());
 		cache.put(name, scaled);
 		return name;
+	}
+
+	/** 도트 그림판으로 그린 그림을 그대로 (줄이지 않고) 저장. 저장된 파일 이름 ("px_…png"). */
+	public String importPixelArt(BufferedImage drawn) throws IOException {
+		if (drawn == null || drawn.getWidth() > MAX_SIDE || drawn.getHeight() > MAX_SIDE) {
+			throw new IOException("그림 크기가 맞지 않아요");
+		}
+		BufferedImage copy = new BufferedImage(drawn.getWidth(), drawn.getHeight(), BufferedImage.TYPE_INT_ARGB);
+		for (int y = 0; y < drawn.getHeight(); y++) {
+			for (int x = 0; x < drawn.getWidth(); x++) {
+				copy.setRGB(x, y, drawn.getRGB(x, y));
+			}
+		}
+		Files.createDirectories(dir);
+		String name = PIXEL_PREFIX + UUID.randomUUID().toString().replace("-", "").substring(0, 24) + ".png";
+		ImageIO.write(copy, "png", dir.resolve(name).toFile());
+		synchronized (this) {
+			cache.put(name, copy);
+		}
+		return name;
+	}
+
+	/** 도트 그림판으로 그린 그림인지 (픽셀이 뭉개지지 않게 그린다). */
+	public static boolean isPixelArt(String name) {
+		return name != null && name.startsWith(PIXEL_PREFIX);
+	}
+
+	/** 그릴 그림: 도트 그림이면 "몸 색" 칸을 color 로 칠한 그림, 아니면 그대로. */
+	public synchronized BufferedImage tinted(String name, String color) {
+		BufferedImage image = get(name);
+		if (image == null || !isPixelArt(name) || color == null) {
+			return image;
+		}
+		String key = name + "|" + color;
+		BufferedImage done = tintCache.get(key);
+		if (done != null) {
+			return done;
+		}
+		int rgb;
+		try {
+			rgb = Integer.parseInt(color.replace("#", ""), 16) & 0xFFFFFF;
+		} catch (NumberFormatException e) {
+			return image;
+		}
+		BufferedImage result = null;
+		for (int y = 0; y < image.getHeight(); y++) {
+			for (int x = 0; x < image.getWidth(); x++) {
+				int argb = image.getRGB(x, y);
+				if ((argb >>> 24) == BODY_ALPHA) {
+					if (result == null) {
+						result = new BufferedImage(image.getWidth(), image.getHeight(), BufferedImage.TYPE_INT_ARGB);
+						for (int yy = 0; yy < image.getHeight(); yy++) {
+							for (int xx = 0; xx < image.getWidth(); xx++) {
+								result.setRGB(xx, yy, image.getRGB(xx, yy));
+							}
+						}
+					}
+					result.setRGB(x, y, 0xFF000000 | rgb);
+				}
+			}
+		}
+		done = result == null ? image : result;
+		if (tintCache.size() > 200) {
+			tintCache.clear();
+		}
+		tintCache.put(key, done);
+		return done;
 	}
 
 	/** 긴 쪽이 MAX_SIDE 를 넘으면 비율을 지켜 줄인다 (투명도 유지). */
@@ -115,6 +189,7 @@ public final class PartImages {
 					try {
 						Files.deleteIfExists(file);
 						cache.remove(name);
+						tintCache.clear();
 					} catch (IOException ignored) {
 						// 다음에 다시
 					}

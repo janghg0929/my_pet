@@ -66,6 +66,7 @@
       self.tl.pendingPhoto = { state: self.tl.state, part: self.selected, t: self.tl.playhead };
       self.send("pickKeyImage");
     });
+    document.getElementById("tl-draw").addEventListener("click", function () { self.openPainter("key"); });
     document.getElementById("tl-photo-remove").addEventListener("click", function () {
       var key = self.keyAtPlayhead(self.selected);
       if (key && key.photo) {
@@ -386,8 +387,7 @@
     document.getElementById("tl-continue").checked = !clip.restart;
     var keyHasPhoto = !!(key && key.photo);
     var photo = document.getElementById("tl-photo");
-    BV.setText(photo, keyHasPhoto ? "사진 바꾸기" : "사진 넣기");
-    photo.title = (tl.playhead / 1000).toFixed(2) + "초부터 " + BV.partName(this.layout, this.selected) + " 사진 바꾸기 (키에 저장)";
+    photo.title = keyHasPhoto ? "지금 시간 키의 사진 바꾸기" : "지금 시간부터 사진 바꾸기";
     document.getElementById("tl-photo-remove").disabled = !keyHasPhoto;
     var ease = document.getElementById("tl-ease");
     ease.checked = key ? key.ease : true;
