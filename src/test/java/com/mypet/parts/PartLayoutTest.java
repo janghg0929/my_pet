@@ -68,6 +68,29 @@ class PartLayoutTest {
 	}
 
 	@Test
+	void rotationMirrorsBoundsAndNormalizes() {
+		PartLayout layout = PartLayout.defaults();
+		layout.leftArm().rotation = 30;
+		layout.mirrorFrom(PartLayout.LEFT_ARM);
+		assertEquals(-30, layout.rightArm().rotation);
+
+		// 44x28 몸통을 90도 돌리면 28x44 로 서 있다 (가운데 22,14 기준)
+		PartLayout body = PartLayout.defaults();
+		body.body().rotation = 90;
+		PartLayout.Bounds b = body.bounds(0);
+		assertEquals(-9, b.minX()); // 왼팔이 더 바깥
+		assertEquals(-8, b.minY()); // 14 - 22
+		assertEquals(37, b.maxY()); // 다리 (36 보다 다리 37 이 더 아래)
+
+		assertEquals(180, PartLayout.normalizeRotation(-180));
+		assertEquals(-90, PartLayout.normalizeRotation(270));
+		assertEquals(10, PartLayout.normalizeRotation(370));
+		Object json = com.mypet.settings.Json.read("{\"body\": {\"rotation\": 405}, \"eyes\": {\"rotation\": \"x\"}}");
+		assertEquals(45, PartLayout.fromJson(json).body().rotation);
+		assertEquals(0, PartLayout.fromJson(json).eyes().rotation);
+	}
+
+	@Test
 	void jsonRoundTripKeepsEverything() {
 		PartLayout layout = PartLayout.defaults();
 		layout.symmetric = false;

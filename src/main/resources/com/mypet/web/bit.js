@@ -7,12 +7,12 @@
   // 기본 비트 배치 (PartLayout.defaults 와 같다)
   var DEFAULT_LAYOUT = {
     symmetric: true,
-    body: { x: 0, y: 0, w: 44, h: 28, image: null, flip: false },
-    leftArm: { x: -9, y: 14, w: 8, h: 8, image: null, flip: false },
-    rightArm: { x: 45, y: 14, w: 8, h: 8, image: null, flip: false },
-    leftLeg: { x: 10, y: 29, w: 8, h: 8, image: null, flip: false },
-    rightLeg: { x: 25, y: 29, w: 8, h: 8, image: null, flip: false },
-    eyes: { x: 14, y: 12, w: 18, h: 6, images: { neutral: null, grab: null, fall: null } }
+    body: { x: 0, y: 0, w: 44, h: 28, rotation: 0, image: null, flip: false },
+    leftArm: { x: -9, y: 14, w: 8, h: 8, rotation: 0, image: null, flip: false },
+    rightArm: { x: 45, y: 14, w: 8, h: 8, rotation: 0, image: null, flip: false },
+    leftLeg: { x: 10, y: 29, w: 8, h: 8, rotation: 0, image: null, flip: false },
+    rightLeg: { x: 25, y: 29, w: 8, h: 8, rotation: 0, image: null, flip: false },
+    eyes: { x: 14, y: 12, w: 18, h: 6, rotation: 0, images: { neutral: null, grab: null, fall: null } }
   };
   var PART_KEYS = ["body", "leftArm", "rightArm", "leftLeg", "rightLeg", "eyes"];
   var DEFAULT_EYES = { x: 14, y: 12, w: 18, h: 6 };
@@ -44,18 +44,40 @@
     return { x: 0, y: 0, bob: 0, limbX: 0, limbY: 0, swayX: 0, armLift: 0, eyeShift: 0, falling: false, expression: null };
   }
 
+  /** 돌린 부위를 감싸는 사각형 (PartLayout.bounds 와 같은 계산). */
+  function partBox(part) {
+    var rad = (part.rotation || 0) * Math.PI / 180;
+    var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+    var hw = part.w / 2 * cos + part.h / 2 * sin;
+    var hh = part.w / 2 * sin + part.h / 2 * cos;
+    var cx = part.x + part.w / 2, cy = part.y + part.h / 2;
+    return {
+      minX: Math.floor(cx - hw + 1e-6), maxX: Math.ceil(cx + hw - 1e-6),
+      minY: Math.floor(cy - hh + 1e-6), maxY: Math.ceil(cy + hh - 1e-6)
+    };
+  }
+
   /** 전체 범위. withRaise 면 팔을 든 높이까지 포함. */
   function bounds(layout, withRaise) {
     var b = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
     PART_KEYS.forEach(function (key) {
-      var part = layout[key];
+      var box = partBox(layout[key]);
       var arm = key === "leftArm" || key === "rightArm";
-      b.minX = Math.min(b.minX, part.x);
-      b.maxX = Math.max(b.maxX, part.x + part.w);
-      b.minY = Math.min(b.minY, arm && withRaise ? part.y - ARM_RAISE : part.y);
-      b.maxY = Math.max(b.maxY, part.y + part.h);
+      b.minX = Math.min(b.minX, box.minX);
+      b.maxX = Math.max(b.maxX, box.maxX);
+      b.minY = Math.min(b.minY, arm && withRaise ? box.minY - ARM_RAISE : box.minY);
+      b.maxY = Math.max(b.maxY, box.maxY);
     });
     return b;
+  }
+
+  /** 부위 가운데(캔버스 좌표)를 기준으로 돌린다. 회전이 없으면 아무것도 안 한다. */
+  function rotateAround(ctx, rotation, cx, cy) {
+    if (rotation) {
+      ctx.translate(cx, cy);
+      ctx.rotate(rotation * Math.PI / 180);
+      ctx.translate(-cx, -cy);
+    }
   }
 
   // ---------------------------------------------------------------- 그리기
@@ -109,11 +131,14 @@
   function drawPart(ctx, ox, oy, k, part, dx, dy, color) {
     var x = part.x + dx, y = part.y + dy;
     var image = loadedImage(part.image);
+    ctx.save();
+    rotateAround(ctx, part.rotation, ox + (x + part.w / 2) * k, oy + (y + part.h / 2) * k);
     if (image) {
       drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, part.flip);
     } else {
       outlinedRect(ctx, ox, oy, k, x, y, x + part.w, y + part.h, color);
     }
+    ctx.restore();
   }
 
   // ox, oy: 몸통 기본 위치(0,0)의 캔버스 좌표(장치 픽셀), k: 1px 이 몇 장치 픽셀인지
@@ -138,8 +163,11 @@
   function drawEyes(ctx, ox, oy, k, p, eyes) {
     var expression = expressionOf(p);
     var image = loadedImage(eyes.images && eyes.images[expression]);
+    ctx.save();
+    rotateAround(ctx, eyes.rotation, ox + (eyes.x + eyes.w / 2) * k, oy + (eyes.y + eyes.h / 2) * k);
     if (image) {
       drawImage(ctx, image, ox + (eyes.x + p.eyeShift) * k, oy + eyes.y * k, eyes.w * k, eyes.h * k, false);
+      ctx.restore();
       return;
     }
     ctx.save();
@@ -147,6 +175,7 @@
     ctx.scale(eyes.w / DEFAULT_EYES.w, eyes.h / DEFAULT_EYES.h);
     ctx.translate(-DEFAULT_EYES.x * k, -DEFAULT_EYES.y * k);
     drawDefaultEyes(ctx, k, p, expression);
+    ctx.restore();
     ctx.restore();
   }
 

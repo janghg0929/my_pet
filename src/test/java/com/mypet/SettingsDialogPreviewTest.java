@@ -97,8 +97,11 @@ class SettingsDialogPreviewTest {
 		layout.leftLeg().y = 41;
 		layout.leftLeg().x = 14;
 		layout.leftLeg().h = 12;
+		layout.leftArm().rotation = -30;
+		layout.leftLeg().rotation = 15;
 		layout.mirrorFrom(PartLayout.LEFT_ARM);
 		layout.mirrorFrom(PartLayout.LEFT_LEG);
+		layout.eyes().rotation = 8;
 		layout.eyes().x = 18;
 		layout.eyes().y = 14;
 		layout.eyes().w = 24;

@@ -1,4 +1,4 @@
-// 모습 꾸미기 편집기: 부위(몸통, 양팔, 양다리, 눈)를 고르고, 끌어서 옮기고, 모서리로 크기를 바꾼다.
+// 모습 꾸미기 편집기: 부위(몸통, 양팔, 양다리, 눈)를 고르고, 끌어서 옮기고, 모서리로 크기를 바꾸고, 위쪽 동그라미로 돌린다.
 // 숫자 입력, 부위 사진 넣기/빼기(눈은 표정별), 좌우 맞추기, 기본 비트로 되돌리기.
 // 바뀐 배치는 send("setParts", JSON) 으로 Java 에 보내 화면 비트에 바로 적용하고 저장한다.
 (function () {
@@ -11,7 +11,24 @@
   var HIT_ORDER = ["rightArm", "leftArm", "eyes", "rightLeg", "leftLeg", "body"];
   var MIRROR = { leftArm: "rightArm", rightArm: "leftArm", leftLeg: "rightLeg", rightLeg: "leftLeg" };
   var HANDLE = 9; // 크기 조절 손잡이 (화면 px)
+  var ROTATE_GAP = 16; // 회전 손잡이가 부위 위로 떨어진 거리 (화면 px)
+  var ROTATE_RADIUS = 5;
+  var ROTATE_SNAP = 15, ROTATE_SNAP_RANGE = 4; // 15도 단위 근처에서는 딱 맞춘다
   var MIN_SIZE = 2, MAX_SIZE = 400, MAX_OFFSET = 400;
+  var FIELDS = ["x", "y", "w", "h", "rotation"];
+
+  /** 각도를 -179..180 도로 맞춘다 (PartLayout.normalizeRotation 과 같다). */
+  function normalizeRotation(degrees) {
+    var r = ((Math.round(degrees) % 360) + 360) % 360;
+    return r > 180 ? r - 360 : r;
+  }
+
+  /** (x, y) 를 기준점 (cx, cy) 둘레로 angle(라디안) 만큼 돌린 점. */
+  function rotatePoint(x, y, cx, cy, angle) {
+    var cos = Math.cos(angle), sin = Math.sin(angle);
+    var dx = x - cx, dy = y - cy;
+    return { x: cx + dx * cos - dy * sin, y: cy + dx * sin + dy * cos };
+  }
 
   function PartsEditor(options) {
     this.send = options.send;
@@ -55,7 +72,7 @@
       eyeTabs.appendChild(button);
     });
 
-    ["x", "y", "w", "h"].forEach(function (field) {
+    FIELDS.forEach(function (field) {
       var input = document.getElementById("parts-" + field);
       input.addEventListener("input", function () { self.onNumber(field, input.value); });
       input.addEventListener("change", function () { self.refreshControls(); });
@@ -154,10 +171,10 @@
     for (var j = 0; j < exprButtons.length; j++) {
       exprButtons[j].classList.toggle("selected", exprButtons[j].getAttribute("data-expr") === this.expression);
     }
-    ["x", "y", "w", "h"].forEach(function (field) {
+    FIELDS.forEach(function (field) {
       var input = document.getElementById("parts-" + field);
       if (document.activeElement !== input) {
-        input.value = part[field];
+        input.value = part[field] || 0;
       }
     });
     document.getElementById("parts-symmetric").checked = !!this.layout.symmetric;
@@ -190,6 +207,7 @@
     t.x = (b.x * 2 + b.w) - (s.x + s.w);
     t.image = s.image;
     t.flip = !!s.image && !s.flip;
+    t.rotation = normalizeRotation(-(s.rotation || 0));
   };
 
   /** key 를 바꾼 뒤 좌우 맞추기 반영. 팔/다리만 반대쪽이 따라오고, 몸통을 바꿔도 다른 부위는 그대로다. */
@@ -207,9 +225,13 @@
       return;
     }
     var part = this.part();
-    part[field] = field === "w" || field === "h"
-      ? Math.max(MIN_SIZE, Math.min(MAX_SIZE, value))
-      : Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, value));
+    if (field === "rotation") {
+      part.rotation = normalizeRotation(value);
+    } else if (field === "w" || field === "h") {
+      part[field] = Math.max(MIN_SIZE, Math.min(MAX_SIZE, value));
+    } else {
+      part[field] = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, value));
+    }
     this.afterChange(this.selected);
     this.draw();
     this.commit(300);
@@ -233,11 +255,12 @@
     var b = window.BitView.bounds(this.layout, false);
     var bw = Math.max(20, b.maxX - b.minX);
     var bh = Math.max(20, b.maxY - b.minY);
-    var k = Math.max(1, Math.min(4, (w - 40) / bw, (h - 40) / bh));
+    // 위쪽은 회전 손잡이 자리만큼 더 비워 둔다
+    var k = Math.max(1, Math.min(4, (w - 40) / bw, (h - 40 - ROTATE_GAP) / bh));
     return {
       k: k,
       ox: w / 2 - ((b.minX + b.maxX) / 2) * k,
-      oy: h / 2 - ((b.minY + b.maxY) / 2) * k,
+      oy: (h + ROTATE_GAP) / 2 - ((b.minY + b.maxY) / 2) * k,
       w: w,
       h: h
     };
@@ -249,7 +272,7 @@
     var b = window.BitView.bounds(this.layout, false);
     var margin = 6;
     return v.ox + b.minX * v.k >= margin && v.ox + b.maxX * v.k <= v.w - margin
-      && v.oy + b.minY * v.k >= margin && v.oy + b.maxY * v.k <= v.h - margin;
+      && v.oy + b.minY * v.k >= margin + ROTATE_GAP && v.oy + b.maxY * v.k <= v.h - margin;
   };
 
   PartsEditor.prototype.draw = function () {
@@ -284,9 +307,12 @@
     }
     window.BitView.drawBitAt(ctx, v.ox * d, v.oy * d, v.k * d, this.getColor(), pose, this.layout);
 
-    // 고른 부위 표시: 점선 테두리 + 크기 조절 손잡이
+    // 고른 부위 표시: 점선 테두리 + 크기 조절 손잡이(오른쪽 아래) + 회전 손잡이(위), 부위와 같이 돌린다
     var r = this.partRect(this.selected, pose);
     ctx.save();
+    ctx.translate(r.cx * d, r.cy * d);
+    ctx.rotate(r.angle);
+    ctx.translate(-r.cx * d, -r.cy * d);
     ctx.strokeStyle = "#26221e";
     ctx.lineWidth = Math.max(1, Math.round(d));
     ctx.setLineDash([4 * d, 3 * d]);
@@ -296,16 +322,39 @@
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(Math.round(hr.x * d), Math.round(hr.y * d), Math.round(hr.w * d), Math.round(hr.h * d));
     ctx.strokeRect(Math.round(hr.x * d) + 0.5, Math.round(hr.y * d) + 0.5, Math.round(hr.w * d), Math.round(hr.h * d));
+    var knob = this.rotateKnob(r);
+    ctx.beginPath();
+    ctx.moveTo(knob.x * d, (r.y - 2) * d);
+    ctx.lineTo(knob.x * d, (knob.y + ROTATE_RADIUS) * d);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(knob.x * d, knob.y * d, ROTATE_RADIUS * d, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
     ctx.restore();
   };
 
-  /** 부위의 캔버스 위 사각형 (화면 px). */
+  /** 부위의 캔버스 위 사각형 (화면 px, 돌리기 전). cx, cy = 가운데, angle = 회전(라디안). */
   PartsEditor.prototype.partRect = function (key, pose) {
     var v = this.view;
     var part = this.layout[key];
     var lift = (key === "leftArm" || key === "rightArm") && pose && pose.armLift ? pose.armLift : 0;
-    return { x: v.ox + part.x * v.k, y: v.oy + (part.y + lift) * v.k, w: part.w * v.k, h: part.h * v.k };
+    var r = { x: v.ox + part.x * v.k, y: v.oy + (part.y + lift) * v.k, w: part.w * v.k, h: part.h * v.k };
+    r.cx = r.x + r.w / 2;
+    r.cy = r.y + r.h / 2;
+    r.angle = (part.rotation || 0) * Math.PI / 180;
+    return r;
   };
+
+  /** 회전 손잡이 가운데 (돌리기 전 좌표). */
+  PartsEditor.prototype.rotateKnob = function (r) {
+    return { x: r.cx, y: r.y - 2 - ROTATE_GAP };
+  };
+
+  /** 화면 점을 부위의 돌리기 전 좌표로 바꾼다 (돌린 부위도 네모 안인지 쉽게 보려고). */
+  function toLocal(r, x, y) {
+    return rotatePoint(x, y, r.cx, r.cy, -r.angle);
+  }
 
   PartsEditor.prototype.handleRect = function (r) {
     return { x: r.x + r.w + 2 - HANDLE / 2, y: r.y + r.h + 2 - HANDLE / 2, w: HANDLE, h: HANDLE };
@@ -326,14 +375,22 @@
     if (!this.view) {
       return null;
     }
-    if (pointIn(this.handleRect(this.partRect(this.selected)), x, y)) {
+    var selected = this.partRect(this.selected);
+    var q = toLocal(selected, x, y);
+    var knob = this.rotateKnob(selected);
+    var grab = ROTATE_RADIUS + 3;
+    if (pointIn({ x: knob.x - grab, y: knob.y - grab, w: grab * 2, h: grab * 2 }, q.x, q.y)) {
+      return { key: this.selected, rotate: true };
+    }
+    if (pointIn(this.handleRect(selected), q.x, q.y)) {
       return { key: this.selected, resize: true };
     }
     for (var i = 0; i < HIT_ORDER.length; i++) {
       var r = this.partRect(HIT_ORDER[i]);
+      var local = toLocal(r, x, y);
       // 아주 작은 부위도 잡을 수 있게 조금 넓게 본다
-      if (pointIn({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, x, y)) {
-        return { key: HIT_ORDER[i], resize: false };
+      if (pointIn({ x: r.x - 3, y: r.y - 3, w: r.w + 6, h: r.h + 6 }, local.x, local.y)) {
+        return { key: HIT_ORDER[i] };
       }
     }
     return null;
@@ -345,7 +402,7 @@
     }
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
-    this.canvas.style.cursor = !target ? "default" : (target.resize ? "nwse-resize" : "move");
+    this.canvas.style.cursor = !target ? "default" : (target.rotate ? "grab" : (target.resize ? "nwse-resize" : "move"));
   };
 
   PartsEditor.prototype.onMouseDown = function (event) {
@@ -359,7 +416,12 @@
       this.select(target.key);
     }
     var part = this.part();
-    this.drag = { key: target.key, resize: target.resize, startX: p.x, startY: p.y, x: part.x, y: part.y, w: part.w, h: part.h, moved: false };
+    var r = this.partRect(target.key);
+    this.drag = {
+      key: target.key, resize: !!target.resize, rotate: !!target.rotate, startX: p.x, startY: p.y,
+      x: part.x, y: part.y, w: part.w, h: part.h, rotation: part.rotation || 0,
+      cx: r.cx, cy: r.cy, startAngle: Math.atan2(p.y - r.cy, p.x - r.cx), moved: false
+    };
   };
 
   PartsEditor.prototype.onMouseMove = function (event) {
@@ -367,17 +429,33 @@
       return;
     }
     var p = this.pointer(event);
-    var dx = Math.round((p.x - this.drag.startX) / this.view.k);
-    var dy = Math.round((p.y - this.drag.startY) / this.view.k);
-    var part = this.layout[this.drag.key];
-    if (this.drag.resize) {
-      part.w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, this.drag.w + dx));
-      part.h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, this.drag.h + dy));
+    var drag = this.drag;
+    var k = this.view.k;
+    var part = this.layout[drag.key];
+    var before = part.x + "," + part.y + "," + part.w + "," + part.h + "," + part.rotation;
+    if (drag.rotate) {
+      // 가운데에서 마우스까지의 각도가 바뀐 만큼 돌린다
+      var turned = (Math.atan2(p.y - drag.cy, p.x - drag.cx) - drag.startAngle) * 180 / Math.PI;
+      var angle = Math.round(drag.rotation + turned);
+      var snapped = Math.round(angle / ROTATE_SNAP) * ROTATE_SNAP;
+      part.rotation = normalizeRotation(Math.abs(angle - snapped) <= ROTATE_SNAP_RANGE ? snapped : angle);
+    } else if (drag.resize) {
+      // 마우스 움직임을 부위의 (돌린) 가로/세로 방향으로 나눠서 크기를 바꾸고, 돌린 왼쪽 위 모서리는 제자리에 둔다
+      var a = drag.rotation * Math.PI / 180;
+      var sx = p.x - drag.startX, sy = p.y - drag.startY;
+      var w = Math.max(MIN_SIZE, Math.min(MAX_SIZE, drag.w + Math.round((sx * Math.cos(a) + sy * Math.sin(a)) / k)));
+      var h = Math.max(MIN_SIZE, Math.min(MAX_SIZE, drag.h + Math.round((-sx * Math.sin(a) + sy * Math.cos(a)) / k)));
+      var corner = rotatePoint(drag.x, drag.y, drag.x + drag.w / 2, drag.y + drag.h / 2, a);
+      var center = rotatePoint(corner.x + w / 2, corner.y + h / 2, corner.x, corner.y, a);
+      part.w = w;
+      part.h = h;
+      part.x = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, Math.round(center.x - w / 2)));
+      part.y = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, Math.round(center.y - h / 2)));
     } else {
-      part.x = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, this.drag.x + dx));
-      part.y = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, this.drag.y + dy));
+      part.x = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, drag.x + Math.round((p.x - drag.startX) / k)));
+      part.y = Math.max(-MAX_OFFSET, Math.min(MAX_OFFSET, drag.y + Math.round((p.y - drag.startY) / k)));
     }
-    this.drag.moved = this.drag.moved || dx !== 0 || dy !== 0;
+    drag.moved = drag.moved || before !== part.x + "," + part.y + "," + part.w + "," + part.h + "," + part.rotation;
     this.afterChange(this.drag.key);
     this.refreshControls();
     this.draw();

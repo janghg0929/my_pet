@@ -47,6 +47,8 @@ public final class PartLayout {
 		public String image;
 		/** 사진을 좌우로 뒤집어 그릴지 (좌우 맞추기로 반대쪽에 복사된 사진). */
 		public boolean flip;
+		/** 회전 (도, 시계 방향, -179..180). 부위 가운데를 기준으로 돌린다. */
+		public int rotation;
 		/** 눈 전용: 표정별 사진 파일 이름. */
 		public final Map<String, String> images = new LinkedHashMap<>();
 
@@ -61,8 +63,17 @@ public final class PartLayout {
 			Part copy = new Part(x, y, w, h);
 			copy.image = image;
 			copy.flip = flip;
+			copy.rotation = rotation;
 			copy.images.putAll(images);
 			return copy;
+		}
+
+		/** 돌린 부위를 감싸는 사각형의 가로 반지름, 세로 반지름 (회전이 없으면 w/2, h/2). */
+		double[] halfExtents() {
+			double rad = Math.toRadians(rotation);
+			double cos = Math.abs(Math.cos(rad));
+			double sin = Math.abs(Math.sin(rad));
+			return new double[] {w / 2.0 * cos + h / 2.0 * sin, w / 2.0 * sin + h / 2.0 * cos};
 		}
 
 		public int right() {
@@ -164,9 +175,10 @@ public final class PartLayout {
 		target.x = doubledCenter - (source.x + source.w);
 		target.image = source.image;
 		target.flip = source.image != null && !source.flip;
+		target.rotation = normalizeRotation(-source.rotation);
 	}
 
-	/** 전체 범위. armRaise = 점프할 때 팔을 드는 높이. */
+	/** 전체 범위 (돌린 부위는 돌린 모양을 감싸는 사각형). armRaise = 점프할 때 팔을 드는 높이. */
 	public Bounds bounds(int armRaise) {
 		int minX = Integer.MAX_VALUE;
 		int minY = Integer.MAX_VALUE;
@@ -175,12 +187,26 @@ public final class PartLayout {
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
 			boolean arm = LEFT_ARM.equals(entry.getKey()) || RIGHT_ARM.equals(entry.getKey());
-			minX = Math.min(minX, part.x);
-			maxX = Math.max(maxX, part.right());
-			minY = Math.min(minY, arm ? part.y - armRaise : part.y);
-			maxY = Math.max(maxY, part.bottom());
+			double[] half = part.halfExtents();
+			double cx = part.x + part.w / 2.0;
+			double cy = part.y + part.h / 2.0;
+			// 소수점 오차로 1px 넓어지지 않게 아주 조금 안쪽으로 반올림
+			int left = (int) Math.floor(cx - half[0] + 1e-6);
+			int right = (int) Math.ceil(cx + half[0] - 1e-6);
+			int top = (int) Math.floor(cy - half[1] + 1e-6);
+			int bottom = (int) Math.ceil(cy + half[1] - 1e-6);
+			minX = Math.min(minX, left);
+			maxX = Math.max(maxX, right);
+			minY = Math.min(minY, arm ? top - armRaise : top);
+			maxY = Math.max(maxY, bottom);
 		}
 		return new Bounds(minX, minY, maxX, maxY);
+	}
+
+	/** 각도를 -179..180 도로 맞춘다. */
+	public static int normalizeRotation(int degrees) {
+		int r = Math.floorMod(degrees, 360);
+		return r > 180 ? r - 360 : r;
 	}
 
 	/** 쓰고 있는 사진 파일 이름들. */
@@ -212,6 +238,7 @@ public final class PartLayout {
 			item.put("y", part.y);
 			item.put("w", part.w);
 			item.put("h", part.h);
+			item.put("rotation", part.rotation);
 			if (EYES.equals(entry.getKey())) {
 				Map<String, Object> images = new LinkedHashMap<>();
 				for (String expression : EYE_EXPRESSIONS) {
@@ -245,6 +272,7 @@ public final class PartLayout {
 			part.y = clampInt(item.get("y"), part.y, -MAX_OFFSET, MAX_OFFSET);
 			part.w = clampInt(item.get("w"), part.w, MIN_SIZE, MAX_SIZE);
 			part.h = clampInt(item.get("h"), part.h, MIN_SIZE, MAX_SIZE);
+			part.rotation = normalizeRotation(clampInt(item.get("rotation"), 0, -100_000, 100_000));
 			if (EYES.equals(key)) {
 				if (item.get("images") instanceof Map<?, ?> images) {
 					for (String expression : EYE_EXPRESSIONS) {

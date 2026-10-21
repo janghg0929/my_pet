@@ -237,6 +237,18 @@ class WebSettingsPreviewTest {
 		Thread.sleep(300);
 		snapshot(settings[0], new File(out, "web-parts-eyes.png"));
 
+		// 회전: 몸통 20도, 왼팔 35도 (좌우 맞추기로 오른팔은 -35도), 눈 -10도
+		runScript(settings[0], "function turn(part, deg) { document.querySelector('#parts-tabs [data-part=' + part + ']').click();"
+			+ " var r = document.getElementById('parts-rotation'); r.value = String(deg); r.dispatchEvent(new Event('input')); }"
+			+ " turn('body', 20); turn('leftArm', 35); turn('eyes', -10); turn('body', 20);");
+		Thread.sleep(700);
+		com.mypet.parts.PartLayout turned = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		System.out.println("rotation sent: body=" + turned.body().rotation + " leftArm=" + turned.leftArm().rotation
+			+ " rightArm=" + turned.rightArm().rotation + " eyes=" + turned.eyes().rotation);
+		assertTrue(turned.body().rotation == 20 && turned.leftArm().rotation == 35 && turned.rightArm().rotation == -35
+			&& turned.eyes().rotation == -10, "회전 값");
+		snapshot(settings[0], new File(out, "web-parts-rotated.png"));
+
 		// 저장한 모습: 예시 모습 7개(2쪽)를 넣어 보고, 뒤로가기가 모습 꾸미기로 가는지 본다
 		runScript(settings[0], "var s = " + STATE + "; s.looks = [];"
 			+ " for (var i = 1; i <= 7; i++) { s.looks.push({ id: 'l' + i, name: '모습 ' + i + (i == 2 ? ' 이름이 아주 긴 모습' : ''),"

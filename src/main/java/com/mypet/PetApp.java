@@ -1999,14 +1999,37 @@ final class PetApp implements SettingsHost {
 		}
 	}
 
-	/** 부위 하나: 사진이 있으면 사진, 없으면 몸 색 네모 + 외곽선. */
+	/** 부위 하나: 사진이 있으면 사진, 없으면 몸 색 네모 + 외곽선. 회전이 있으면 부위 가운데를 기준으로 돌린다. */
 	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color) {
 		BufferedImage image = partImages.get(part.image);
-		if (image == null) {
-			Draw.rect(g, x, y, x + part.w, y + part.h, color, "#000000", border);
+		if (part.rotation == 0) {
+			if (image == null) {
+				Draw.rect(g, x, y, x + part.w, y + part.h, color, "#000000", border);
+			} else {
+				drawImage(g, image, x, y, part.w, part.h, part.flip);
+			}
 			return;
 		}
-		drawImage(g, image, x, y, part.w, part.h, part.flip);
+		Graphics2D gr = (Graphics2D) g.create();
+		try {
+			double left = Util.pyRound(x);
+			double top = Util.pyRound(y);
+			gr.rotate(Math.toRadians(part.rotation), left + part.w / 2.0, top + part.h / 2.0);
+			if (image != null) {
+				drawImage(gr, image, left, top, part.w, part.h, part.flip);
+				return;
+			}
+			// 돌린 네모는 계단처럼 보이지 않게 부드럽게 그린다 (바깥을 테두리 색으로 채우고 안쪽을 몸 색으로)
+			gr.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			gr.setColor(Color.BLACK);
+			gr.fill(new java.awt.geom.Rectangle2D.Double(left, top, part.w, part.h));
+			if (part.w > border * 2 && part.h > border * 2) {
+				gr.setColor(Draw.color(color));
+				gr.fill(new java.awt.geom.Rectangle2D.Double(left + border, top + border, part.w - border * 2.0, part.h - border * 2.0));
+			}
+		} finally {
+			gr.dispose();
+		}
 	}
 
 	private static void drawImage(Graphics2D g, BufferedImage image, double x, double y, double w, double h, boolean flip) {
@@ -2030,8 +2053,20 @@ final class PetApp implements SettingsHost {
 	 * 표정에 맞는 눈 (파이썬 draw_eyes). 마지막으로 다시 그린 시점의 시선 값을 사용한다.
 	 * 표정별 눈 사진이 있으면 눈 영역에 사진을, 없으면 기본 눈을 눈 영역에 맞춰 늘려 그린다.
 	 */
-	private void paintEyes(Graphics2D graphics) {
+	private void paintEyes(Graphics2D original) {
 		PartLayout.Part eyes = layout.eyes();
+		Graphics2D graphics = (Graphics2D) original.create();
+		try {
+			if (eyes.rotation != 0) {
+				graphics.rotate(Math.toRadians(eyes.rotation), charOriginX + eyes.x + eyes.w / 2.0, charOriginY + eyes.y + eyes.h / 2.0);
+			}
+			paintEyesInBox(graphics, eyes);
+		} finally {
+			graphics.dispose();
+		}
+	}
+
+	private void paintEyesInBox(Graphics2D graphics, PartLayout.Part eyes) {
 		String expressionKey = switch (expression) {
 			case EXPR_GRAB -> PartLayout.EXPR_GRAB;
 			case EXPR_FALL -> PartLayout.EXPR_FALL;

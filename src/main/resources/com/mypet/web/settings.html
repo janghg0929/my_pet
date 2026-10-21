@@ -56,7 +56,7 @@
 
   <!-- 모습 꾸미기 (parts-editor.js) -->
   <main class="view" data-view="parts" hidden>
-    <p class="subtitle">부위를 눌러 고르고, 끌어서 옮기거나 모서리로 크기를 바꿔요</p>
+    <p class="subtitle">부위를 눌러 고르고 끌어서 옮겨요. 모서리 네모는 크기, 위쪽 동그라미는 회전</p>
     <section class="box parts-stage">
       <canvas id="parts-canvas" class="parts-canvas" aria-label="비트 모습 편집"></canvas>
     </section>
@@ -67,6 +67,7 @@
       <label>Y <input id="parts-y" type="number" step="1"></label>
       <label>너비 <input id="parts-w" type="number" step="1" min="2"></label>
       <label>높이 <input id="parts-h" type="number" step="1" min="2"></label>
+      <label>회전 <input id="parts-rotation" type="number" step="5" title="도 (시계 방향)"></label>
     </div>
     <div class="button-row">
       <button class="btn btn-primary" id="parts-photo">넣기: 몸통 사진</button>
