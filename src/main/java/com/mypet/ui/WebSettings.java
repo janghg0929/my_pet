@@ -446,6 +446,18 @@ public final class WebSettings implements SettingsHost.View {
 			SwingUtilities.invokeLater(() -> host.removePartImage(partKey, expressionKey));
 		}
 
+		/** 고급 시간 막대: 키 사진 고르기 → window.bitPickedImage(파일 이름 또는 null). */
+		public void pickKeyImage() {
+			SwingUtilities.invokeLater(() -> {
+				String name = host.importPartImage();
+				Platform.runLater(() -> {
+					if (loaded) {
+						engine.executeScript("window.bitPickedImage && window.bitPickedImage(" + (name == null ? "null" : jsString(name)) + ")");
+					}
+				});
+			});
+		}
+
 		public void resetParts() {
 			SwingUtilities.invokeLater(host::resetParts);
 		}

@@ -831,15 +831,10 @@ final class PetApp implements SettingsHost {
 		if (part == null || layout.get(part) == null) {
 			return;
 		}
-		java.awt.FileDialog chooser = new java.awt.FileDialog(settingsDialog, "부위 사진 고르기", java.awt.FileDialog.LOAD);
-		chooser.setFile("*.png;*.jpg;*.jpeg;*.gif;*.bmp");
-		chooser.setFilenameFilter((dir, name) -> name.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|bmp)"));
-		chooser.setVisible(true); // 고를 때까지 기다린다
-		if (chooser.getFile() == null) {
-			refreshWebSettings("사진 고르기를 취소했어요");
+		java.io.File file = chooseImageFile("부위 사진 고르기");
+		if (file == null) {
 			return;
 		}
-		java.io.File file = new java.io.File(chooser.getDirectory(), chooser.getFile());
 		String name;
 		try {
 			name = partImages.importImage(file);
@@ -866,6 +861,33 @@ final class PetApp implements SettingsHost {
 			copy.mirrorFrom(part);
 		}
 		saveLayout(copy, "사진을 넣었어요");
+	}
+
+	/** 사진 파일 고르기 창 (고를 때까지 기다린다). 취소하면 상태 문구를 남기고 null. */
+	private java.io.File chooseImageFile(String title) {
+		java.awt.FileDialog chooser = new java.awt.FileDialog(settingsDialog, title, java.awt.FileDialog.LOAD);
+		chooser.setFile("*.png;*.jpg;*.jpeg;*.gif;*.bmp");
+		chooser.setFilenameFilter((dir, name) -> name.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(png|jpe?g|gif|bmp)"));
+		chooser.setVisible(true);
+		if (chooser.getFile() == null) {
+			refreshWebSettings("사진 고르기를 취소했어요");
+			return null;
+		}
+		return new java.io.File(chooser.getDirectory(), chooser.getFile());
+	}
+
+	@Override
+	public String importPartImage() {
+		java.io.File file = chooseImageFile("키 사진 고르기");
+		if (file == null) {
+			return null;
+		}
+		try {
+			return partImages.importImage(file);
+		} catch (java.io.IOException | RuntimeException e) {
+			refreshWebSettings("사진을 읽지 못했어요: " + e.getMessage());
+			return null;
+		}
 	}
 
 	@Override
@@ -1954,10 +1976,23 @@ final class PetApp implements SettingsHost {
 		PartAnimation.fadeWeights(motionWeights, state);
 		double tickMs = 1000.0 / PartMotion.TICKS_PER_SECOND;
 		for (String s : PartAnimation.STATES) {
-			double elapsed = PartAnimation.ALWAYS.equals(s) ? motionTicks * tickMs
-				: (motionWeights.getOrDefault(s, 0.0) > 0 ? motionElapsedMs.getOrDefault(s, 0.0) + tickMs : 0.0);
+			double before = motionElapsedMs.getOrDefault(s, 0.0);
+			double elapsed;
+			if (PartAnimation.ALWAYS.equals(s)) {
+				elapsed = motionTicks * tickMs;
+			} else if (motionWeights.getOrDefault(s, 0.0) > 0) {
+				elapsed = before + tickMs;
+			} else {
+				// 꺼진 상황: 다음에 처음부터 (이어서 클립은 그대로 두었다가 이어서)
+				elapsed = layout.timeline.clips.get(s).restart ? 0.0 : before;
+			}
 			motionElapsedMs.put(s, elapsed);
 		}
+	}
+
+	/** 고급 시간 막대 키가 정한 지금 부위 사진 (없으면 null = 원래대로). */
+	private PartTimeline.Photo photoOf(String key) {
+		return layout.timeline.photo(key, motionWeights, motionElapsedMs);
 	}
 
 	/** 부위의 지금 애니메이션 모양. */
@@ -1994,12 +2029,12 @@ final class PetApp implements SettingsHost {
 		double bodyTop = bodyTop();
 
 		// 몸통
-		drawPart(g, body, bodyLeft, bodyTop, color, motionOf(PartLayout.BODY));
+		drawPart(g, body, bodyLeft, bodyTop, color, motionOf(PartLayout.BODY), photoOf(PartLayout.BODY));
 		// 다리
 		drawPart(g, leftLeg, charOriginX + leftLeg.x + limbOffsetX - limbSwayX, charOriginY + leftLeg.y + limbOffsetY, color,
-			motionOf(PartLayout.LEFT_LEG));
+			motionOf(PartLayout.LEFT_LEG), photoOf(PartLayout.LEFT_LEG));
 		drawPart(g, rightLeg, charOriginX + rightLeg.x + limbOffsetX + limbSwayX, charOriginY + rightLeg.y + limbOffsetY, color,
-			motionOf(PartLayout.RIGHT_LEG));
+			motionOf(PartLayout.RIGHT_LEG), photoOf(PartLayout.RIGHT_LEG));
 
 		boolean pixelHeartVisible = isPixelHeartEnabled();
 		if (pixelHeartVisible) {
@@ -2018,9 +2053,11 @@ final class PetApp implements SettingsHost {
 
 		// 팔
 		drawPart(g, leftArm, charOriginX + leftArm.x + limbOffsetX + limbSwayX,
-			charOriginY + leftArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.LEFT_ARM));
+			charOriginY + leftArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.LEFT_ARM),
+			photoOf(PartLayout.LEFT_ARM));
 		drawPart(g, rightArm, charOriginX + rightArm.x + limbOffsetX - limbSwayX,
-			charOriginY + rightArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.RIGHT_ARM));
+			charOriginY + rightArm.y + armLiftCurrent + limbOffsetY, color, motionOf(PartLayout.RIGHT_ARM),
+			photoOf(PartLayout.RIGHT_ARM));
 
 		if (isBrowserMonocleEnabled()) {
 			AppearanceRendering.renderMonocle(g, charOriginX + rightArm.right(), charOriginY + rightArm.y + armLiftCurrent,
@@ -2036,8 +2073,18 @@ final class PetApp implements SettingsHost {
 	 * 부위 하나: 사진이 있으면 사진, 없으면 몸 색 네모 + 외곽선.
 	 * 부위 회전은 가운데 기준, 애니메이션(옮기기, 돌리기, 늘이기)은 부위 중심점(pivot) 기준.
 	 */
-	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color, PartAnimation.Transform motion) {
+	private void drawPart(Graphics2D g, PartLayout.Part part, double x, double y, String color, PartAnimation.Transform motion,
+		PartTimeline.Photo photo) {
 		BufferedImage image = partImages.get(part.image);
+		boolean flip = part.flip;
+		if (photo != null && !photo.base()) {
+			// 시간 막대 키가 바꾼 사진 (못 읽으면 원래대로)
+			BufferedImage keyImage = partImages.get(photo.name());
+			if (keyImage != null) {
+				image = keyImage;
+				flip = photo.flip();
+			}
+		}
 		if (part.rotation == 0 && motion.rotation() == 0) {
 			// 돌리지 않으면 픽셀이 딱 맞게 그린다 (애니메이션은 위치와 크기만 바꾼다)
 			double[] pivot = part.pivotPoint();
@@ -2050,7 +2097,7 @@ final class PetApp implements SettingsHost {
 			if (image == null) {
 				Draw.rect(g, left, top, left + w, top + h, color, "#000000", border);
 			} else {
-				drawImage(g, image, left, top, w, h, part.flip);
+				drawImage(g, image, left, top, w, h, flip);
 			}
 			return;
 		}
@@ -2060,7 +2107,7 @@ final class PetApp implements SettingsHost {
 			double top = Util.pyRound(y);
 			applyPartTransform(gr, part, left, top, motion);
 			if (image != null) {
-				drawImage(gr, image, left, top, part.w, part.h, part.flip);
+				drawImage(gr, image, left, top, part.w, part.h, flip);
 				return;
 			}
 			// 돌린 네모는 계단처럼 보이지 않게 부드럽게 그린다 (바깥을 테두리 색으로 채우고 안쪽을 몸 색으로)
@@ -2138,9 +2185,16 @@ final class PetApp implements SettingsHost {
 			default -> PartLayout.EXPR_NEUTRAL;
 		};
 		BufferedImage eyeImage = partImages.get(layout.eyeImage(expressionKey));
+		boolean flip = false;
+		PartTimeline.Photo photo = photoOf(PartLayout.EYES);
+		if (photo != null && !photo.base() && partImages.get(photo.name()) != null) {
+			// 시간 막대 키가 바꾼 눈 사진
+			eyeImage = partImages.get(photo.name());
+			flip = photo.flip();
+		}
 		if (eyeImage != null) {
 			drawImage(graphics, eyeImage, charOriginX + eyes.x + eyeDrawnShift + eyeDrawnInvalidOffset,
-				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, false);
+				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, flip);
 			return;
 		}
 

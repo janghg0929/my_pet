@@ -1,7 +1,8 @@
 // 모습 꾸미기 → 고급: 영상 편집처럼 시간 막대에 키프레임(◆)을 찍는다. PartsEditor 에 기능을 더한다.
 // 상황(항상/쉴 때/걸을 때/공중/잡힐 때)마다 클립 하나, 부위마다 키 줄 하나.
 // 재생 위치(빨간 선)를 고르고 미리보기에서 부위를 끌거나(옮기기) 돌리거나(회전) 모서리를 끌면(크기) 그 시간에 키가 생긴다.
-// 키 사이는 부드럽게 이어지고, 실제 비트는 그 상황이 시작될 때 0초부터 재생한다 (PartTimeline.java, bit.js clipAt).
+// 키 사이는 부드럽게 이어지고, 실제 비트는 그 상황이 시작될 때 0초부터 재생한다(이어서 = 멈췄던 데서 계속).
+// 키에 사진을 넣으면 그 시간부터 다음 사진 키까지 부위 사진이 바뀐다 (PartTimeline.java, bit.js clipAt / clipPhotoAt).
 (function () {
   "use strict";
 
@@ -15,8 +16,8 @@
   var KEY_HIT = 6, MAX_KEYS = 60;
   var MIN_VIEW_MS = 100, TIME_ZOOM_STEP = 1.25; // 시간 막대를 가장 크게 확대하면 0.1초가 한 화면
   // 눈금 간격 후보 (ms): 확대할수록 촘촘한 눈금
-  var TICK_STEPS = [5, 10, 20, 50, 100, 200, 500, 1000, 2000];
-  var LABEL_STEPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  var TICK_STEPS = [5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000];
+  var LABEL_STEPS = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000];
   var MAX_OFFSET = 200, MAX_TURN = 1080, MIN_SCALE = 10, MAX_SCALE = 400;
   var ROTATE_SNAP = 15, ROTATE_SNAP_RANGE = 4;
   var FIELDS = ["dx", "dy", "rotation", "scaleX", "scaleY"];
@@ -90,7 +91,7 @@
         return;
       }
       var clip = self.clip();
-      clip.duration = clamp(Math.round(seconds * 1000), 100, 10000);
+      clip.duration = clamp(Math.round(seconds * 1000), 100, 60000);
       // 길이보다 뒤에 있던 키는 끝으로
       Object.keys(clip.tracks).forEach(function (part) {
         clip.tracks[part].forEach(function (k) {
@@ -105,6 +106,28 @@
     });
     document.getElementById("tl-loop").addEventListener("change", function (event) {
       self.clip().loop = event.target.checked;
+      self.draw();
+      self.commit(0);
+    });
+    document.getElementById("tl-continue").addEventListener("change", function (event) {
+      self.clip().restart = !event.target.checked;
+      self.commit(0);
+    });
+    // 키 사진: 그대로 / 원래 사진 / 이미 쓴 사진 / 새 사진 고르기
+    var keyPhoto = document.getElementById("tl-key-photo");
+    keyPhoto.addEventListener("change", function () {
+      var value = keyPhoto.value;
+      if (value === "@pick") {
+        self.tl.pendingPhoto = { state: self.tl.state, part: self.selected, t: self.tl.playhead };
+        self.send("pickKeyImage");
+        self.refreshControls();
+        return;
+      }
+      var key = self.ensureKey(self.selected, self.tl.playhead);
+      key.photo = value || null;
+      key.flip = false;
+      self.afterChange(self.selected);
+      self.refreshControls();
       self.draw();
       self.commit(0);
     });
@@ -145,6 +168,41 @@
     this.tlCanvas.addEventListener("mousewheel", onWheel);
     document.addEventListener("mousemove", function (event) { self.timelineMouseMove(event); });
     document.addEventListener("mouseup", function () { self.timelineMouseUp(); });
+  };
+
+  /** (Java 가 부름) 키 사진을 골랐다: 고를 때의 상황·부위·시간 키에 넣는다. 취소면 name = null. */
+  P.onPickedImage = function (name) {
+    var pending = this.tl.pendingPhoto;
+    this.tl.pendingPhoto = null;
+    if (!pending || !name) {
+      this.refreshControls();
+      return;
+    }
+    var state = this.tl.state;
+    this.tl.state = pending.state;
+    var key = this.ensureKey(pending.part, pending.t);
+    key.photo = name;
+    key.flip = false;
+    this.tl.state = state;
+    this.afterChange(pending.part);
+    this.send("requestImage", name);
+    this.refreshControls();
+    this.draw();
+    this.commit(0);
+  };
+
+  /** 고른 부위의 키에 쓰인 사진들 (모든 상황, 순서대로) — 사진 칸에서 다시 고를 수 있게. */
+  P.keyPhotos = function (part) {
+    var names = [];
+    var timeline = this.layout.timeline;
+    BV.STATES.forEach(function (state) {
+      (timeline[state].tracks[part] || []).forEach(function (k) {
+        if (k.photo && k.photo !== BV.BASE_PHOTO && names.indexOf(k.photo) < 0) {
+          names.push(k.photo);
+        }
+      });
+    });
+    return names;
   };
 
   /** 고른 상황의 눈 표정 (공중 = 떨어질 때, 잡힐 때 = 잡혔을 때, 나머지 = 평소). */
@@ -249,6 +307,18 @@
       BV.timelineTransform(this.layout.timeline, key, weights, elapsed));
   };
 
+  /** 고른 상황이 playhead 만큼 지났을 때 부위 사진 (실제 비트와 같은 계산). */
+  P.timelinePhotoAt = function (key) {
+    var state = this.tl.state;
+    var weights = {};
+    if (state !== "always") {
+      weights[state] = 1;
+    }
+    var elapsed = { always: this.tl.playhead };
+    elapsed[state] = this.tl.playhead;
+    return BV.timelinePhoto(this.layout.timeline, key, weights, elapsed);
+  };
+
   P.timelinePose = function () {
     var self = this;
     var pose = BV.newPose();
@@ -257,7 +327,10 @@
     if (pose.expression === "fall") {
       pose.armLift = -8;
     }
-    pose.motion = { transform: function (layout, key) { return self.timelineTransformAt(key); } };
+    pose.motion = {
+      transform: function (layout, key) { return self.timelineTransformAt(key); },
+      photo: function (layout, key) { return self.timelinePhotoAt(key); }
+    };
     return pose;
   };
 
@@ -329,6 +402,24 @@
       duration.value = (clip.duration / 1000).toFixed(1);
     }
     document.getElementById("tl-loop").checked = clip.loop;
+    document.getElementById("tl-continue").checked = !clip.restart;
+    // 키 사진 칸
+    var keyPhoto = document.getElementById("tl-key-photo");
+    if (document.activeElement !== keyPhoto) {
+      var options = [["", "그대로"], [BV.BASE_PHOTO, "원래 사진"]];
+      this.keyPhotos(this.selected).forEach(function (name, i) {
+        options.push([name, "사진 " + (i + 1)]);
+      });
+      options.push(["@pick", "새 사진…"]);
+      keyPhoto.innerHTML = "";
+      options.forEach(function (o) {
+        var option = document.createElement("option");
+        option.value = o[0];
+        option.textContent = o[1];
+        keyPhoto.appendChild(option);
+      });
+      keyPhoto.value = key && key.photo ? key.photo : "";
+    }
     var hasImage = this.timelineHasImage();
     var photo = document.getElementById("tl-photo");
     photo.textContent = hasImage ? "사진 바꾸기" : "사진 넣기";
@@ -477,6 +568,14 @@
         }
         ctx.closePath();
         ctx.fill();
+        if (k.photo) {
+          // 사진 키: 오른쪽 위 작은 네모 (원래 사진으로 돌아가는 키는 빈 네모)
+          ctx.fillStyle = k.photo === BV.BASE_PHOTO ? "#ffffff" : "#4fc3f7";
+          ctx.fillRect(kx + 2, cy - 6, 5, 5);
+          ctx.strokeStyle = "#26221e";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(kx + 2.5, cy - 5.5, 4, 4);
+        }
       });
       ctx.restore();
     });

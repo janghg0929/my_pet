@@ -106,6 +106,18 @@
         });
       }
     });
+    // 고급 시간 막대 키 사진
+    var timeline = layout.timeline || {};
+    Object.keys(timeline).forEach(function (state) {
+      var tracks = (timeline[state] && timeline[state].tracks) || {};
+      Object.keys(tracks).forEach(function (part) {
+        tracks[part].forEach(function (k) {
+          if (k.photo && k.photo !== window.BitView.BASE_PHOTO) {
+            names.push(k.photo);
+          }
+        });
+      });
+    });
     names.forEach(function (name) {
       if (!window.BitView.images[name] && !requestedImages[name]) {
         requestedImages[name] = true;
@@ -113,6 +125,13 @@
       }
     });
   }
+
+  // (Java 가 부름) 고급 시간 막대에서 고른 키 사진 (취소면 null)
+  window.bitPickedImage = function (name) {
+    if (editor && editor.onPickedImage) {
+      editor.onPickedImage(name);
+    }
+  };
 
   // (Java 가 부름) 부위 사진 도착
   window.bitImage = function (name, dataUrl) {

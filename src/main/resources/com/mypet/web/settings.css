@@ -352,7 +352,7 @@ button {
 }
 
 .part-fields.tl-fields {
-  grid-template-columns: repeat(5, 1fr) 46px;
+  grid-template-columns: repeat(5, 1fr) 1.4fr 46px;
   margin-top: 8px;
 }
 

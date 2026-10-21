@@ -524,7 +524,7 @@
       }
       while (acc >= TICK_MS) {
         // 고른 상황의 자세와 움직임을 보여준다 (상황을 바꾸면 비트처럼 서서히 바뀐다)
-        self.clock.tick(self.animState);
+        self.clock.tick(self.animState, self.layout.timeline);
         acc -= TICK_MS;
       }
       self.draw();
@@ -634,7 +634,10 @@
       var keys = clip.tracks[sourceKey];
       if (keys && keys.length) {
         clip.tracks[targetKey] = keys.map(function (k) {
-          return { t: k.t, dx: -k.dx, dy: k.dy, rotation: -k.rotation, scaleX: k.scaleX, scaleY: k.scaleY, ease: k.ease };
+          return {
+            t: k.t, dx: -k.dx, dy: k.dy, rotation: -k.rotation, scaleX: k.scaleX, scaleY: k.scaleY, ease: k.ease,
+            photo: k.photo || null, flip: !!k.photo && k.photo !== window.BitView.BASE_PHOTO && !k.flip
+          };
         });
       } else {
         delete clip.tracks[targetKey];

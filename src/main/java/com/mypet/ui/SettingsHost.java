@@ -22,6 +22,9 @@ public interface SettingsHost {
 	/** 모습 꾸미기: 부위 사진 고르기 (눈이면 expression = neutral/grab/fall). */
 	void pickPartImage(String part, String expression);
 
+	/** 고급 시간 막대: 사진 파일을 골라 parts 폴더로 가져오고 파일 이름을 돌려준다 (취소하면 null). */
+	String importPartImage();
+
 	/** 모습 꾸미기: 부위 사진 빼기. */
 	void removePartImage(String part, String expression);
 

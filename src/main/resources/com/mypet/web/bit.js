@@ -47,14 +47,15 @@
 
   // ---------------------------------------------------------------- 고급: 시간 막대 (PartTimeline.java 와 같은 계산)
 
-  var CLIP_DEFAULT_MS = 1000, CLIP_MIN_MS = 100, CLIP_MAX_MS = 10000;
+  var CLIP_DEFAULT_MS = 1000, CLIP_MIN_MS = 100, CLIP_MAX_MS = 60000;
+  var BASE_PHOTO = "@base"; // 키 사진: 원래(부위) 사진으로 돌아가기
 
   function emptyClip() {
-    return { duration: CLIP_DEFAULT_MS, loop: true, tracks: {} };
+    return { duration: CLIP_DEFAULT_MS, loop: true, restart: true, tracks: {} };
   }
 
   function newKey(t) {
-    return { t: t, dx: 0, dy: 0, rotation: 0, scaleX: 100, scaleY: 100, ease: true };
+    return { t: t, dx: 0, dy: 0, rotation: 0, scaleX: 100, scaleY: 100, ease: true, photo: null, flip: false };
   }
 
   /** 상황마다 클립이 있고, 키는 시간 순으로. */
@@ -65,6 +66,7 @@
       var clip = {
         duration: clamp(Math.round(c.duration || CLIP_DEFAULT_MS), CLIP_MIN_MS, CLIP_MAX_MS),
         loop: c.loop !== false,
+        restart: c.restart !== false,
         tracks: {}
       };
       PART_KEYS.forEach(function (key) {
@@ -78,6 +80,8 @@
               }
             });
             n.ease = k.ease !== false;
+            n.photo = typeof k.photo === "string" && k.photo ? k.photo : null;
+            n.flip = !!n.photo && n.photo !== BASE_PHOTO && !!k.flip;
             return n;
           }).sort(function (a, b) { return a.t - b.t; });
         }
@@ -123,6 +127,45 @@
       }
     }
     return mixKeys(last, last, 0);
+  }
+
+  /** 클립이 elapsedMs 만큼 지났을 때 부위 사진 {name, flip} (사진 키가 없으면 null) — PartTimeline.Clip.photoAt. */
+  function clipPhotoAt(clip, part, elapsedMs) {
+    var keys = (clip && clip.tracks[part]) || [];
+    var d = clip ? clip.duration : 1;
+    var t = clip && clip.loop ? elapsedMs % d : Math.min(elapsedMs, d);
+    var current = null, last = null;
+    keys.forEach(function (k) {
+      if (!k.photo) {
+        return;
+      }
+      last = k;
+      if (k.t <= t) {
+        current = k;
+      }
+    });
+    if (!current && clip && clip.loop) {
+      current = last;
+    }
+    return current ? { name: current.photo, flip: !!current.flip } : null;
+  }
+
+  /** 지금 보일 부위 사진: 반 넘게 켜진 상황의 사진, 없으면 "항상"의 사진 (PartTimeline.photo). */
+  function timelinePhoto(timeline, part, weights, elapsed) {
+    if (!timeline) {
+      return null;
+    }
+    for (var i = 0; i < STATES.length; i++) {
+      var state = STATES[i];
+      if (state === "always" || (weights[state] || 0) < 0.5) {
+        continue;
+      }
+      var photo = clipPhotoAt(timeline[state], part, elapsed[state] || 0);
+      if (photo) {
+        return photo;
+      }
+    }
+    return clipPhotoAt(timeline.always, part, elapsed.always || 0);
   }
 
   /** 상황별 켜짐 정도·지난 시간으로 섞은 시간 막대 모양 (PartTimeline.transform). */
@@ -342,7 +385,8 @@
     this.elapsed = {}; // 상황 → 켜진 뒤 지난 시간 (ms)
   }
 
-  MotionClock.prototype.tick = function (state) {
+  /** timeline: 고급 클립 (이어서 클립은 꺼져도 지난 시간을 그대로 둔다). */
+  MotionClock.prototype.tick = function (state, timeline) {
     var self = this;
     this.ticks += 1;
     STATES.forEach(function (s) {
@@ -359,8 +403,14 @@
     });
     var tickMs = 1000 / MOTION_TICKS_PER_SECOND;
     STATES.forEach(function (s) {
-      self.elapsed[s] = s === "always" ? self.ticks * tickMs : ((self.weights[s] || 0) > 0 ? (self.elapsed[s] || 0) + tickMs : 0);
+      var before = self.elapsed[s] || 0;
+      var keep = timeline && timeline[s] && timeline[s].restart === false;
+      self.elapsed[s] = s === "always" ? self.ticks * tickMs : ((self.weights[s] || 0) > 0 ? before + tickMs : (keep ? before : 0));
     });
+  };
+
+  MotionClock.prototype.photo = function (layout, key) {
+    return timelinePhoto(layout.timeline, key, this.weights, this.elapsed);
   };
 
   MotionClock.prototype.transform = function (layout, key) {
@@ -552,14 +602,20 @@
     ctx.restore();
   }
 
-  // 부위 하나 (dx, dy: 걷기 등으로 생기는 어긋남, mt: 반복 움직임 모양)
-  function drawPart(ctx, ox, oy, k, part, dx, dy, color, mt) {
+  // 부위 하나 (dx, dy: 걷기 등으로 생기는 어긋남, mt: 반복 움직임 모양, photo: 시간 막대 키가 바꾼 사진)
+  function drawPart(ctx, ox, oy, k, part, dx, dy, color, mt, photo) {
     var x = part.x + dx, y = part.y + dy;
     var image = loadedImage(part.image);
+    var flip = part.flip;
+    var keyImage = photo && photo.name !== BASE_PHOTO ? loadedImage(photo.name) : null;
+    if (keyImage) {
+      image = keyImage;
+      flip = photo.flip;
+    }
     ctx.save();
     applyPartTransform(ctx, part, ox + x * k, oy + y * k, mt, k);
     if (image) {
-      drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, part.flip);
+      drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, flip);
     } else {
       outlinedRect(ctx, ox, oy, k, x, y, x + part.w, y + part.h, color);
     }
@@ -574,14 +630,17 @@
     function mt(key) {
       return p.motion && L[key].animations ? p.motion.transform(L, key) : NO_MOTION;
     }
+    function photo(key) {
+      return p.motion && p.motion.photo ? p.motion.photo(L, key) : null;
+    }
     // 몸통, 다리 (앱과 같은 순서로 그린다)
-    drawPart(ctx, ox, oy, k, L.body, 0, 0, color, mt("body"));
-    drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color, mt("leftLeg"));
-    drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color, mt("rightLeg"));
-    drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"));
+    drawPart(ctx, ox, oy, k, L.body, 0, 0, color, mt("body"), photo("body"));
+    drawPart(ctx, ox, oy, k, L.leftLeg, p.limbX - p.swayX, p.limbY, color, mt("leftLeg"), photo("leftLeg"));
+    drawPart(ctx, ox, oy, k, L.rightLeg, p.limbX + p.swayX, p.limbY, color, mt("rightLeg"), photo("rightLeg"));
+    drawEyes(ctx, ox, oy, k, p, L.eyes, mt("eyes"), photo("eyes"));
     // 팔
-    drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color, mt("leftArm"));
-    drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color, mt("rightArm"));
+    drawPart(ctx, ox, oy, k, L.leftArm, p.limbX + p.swayX, p.armLift + p.limbY, color, mt("leftArm"), photo("leftArm"));
+    drawPart(ctx, ox, oy, k, L.rightArm, p.limbX - p.swayX, p.armLift + p.limbY, color, mt("rightArm"), photo("rightArm"));
   }
 
   function expressionOf(p) {
@@ -589,13 +648,19 @@
   }
 
   // 눈: 표정별 사진이 있으면 사진, 없으면 기본 눈을 눈 영역에 맞춰 늘려 그린다
-  function drawEyes(ctx, ox, oy, k, p, eyes, mt) {
+  function drawEyes(ctx, ox, oy, k, p, eyes, mt, photo) {
     var expression = expressionOf(p);
     var image = loadedImage(eyes.images && eyes.images[expression]);
+    var flip = false;
+    var keyImage = photo && photo.name !== BASE_PHOTO ? loadedImage(photo.name) : null;
+    if (keyImage) {
+      image = keyImage;
+      flip = photo.flip;
+    }
     ctx.save();
     applyPartTransform(ctx, eyes, ox + eyes.x * k, oy + eyes.y * k, mt, k);
     if (image) {
-      drawImage(ctx, image, ox + (eyes.x + p.eyeShift) * k, oy + eyes.y * k, eyes.w * k, eyes.h * k, false);
+      drawImage(ctx, image, ox + (eyes.x + p.eyeShift) * k, oy + eyes.y * k, eyes.w * k, eyes.h * k, flip);
       ctx.restore();
       return;
     }
@@ -839,7 +904,7 @@
     }
     p.swayX = Math.sin(this.swayPhase) * LIMB_SWAY_MAX_X * this.swayAmp;
 
-    this.motion.tick(this.airborne ? "air" : (walking ? "walk" : "idle"));
+    this.motion.tick(this.airborne ? "air" : (walking ? "walk" : "idle"), this.layout.timeline);
     p.motion = this.motion;
   };
 
@@ -879,6 +944,9 @@
     partTransform: partTransform,
     motionTransform: motionTransform,
     clipAt: clipAt,
+    clipPhotoAt: clipPhotoAt,
+    timelinePhoto: timelinePhoto,
+    BASE_PHOTO: BASE_PHOTO,
     timelineTransform: timelineTransform,
     newKey: newKey,
     combineTransforms: combineTransforms,

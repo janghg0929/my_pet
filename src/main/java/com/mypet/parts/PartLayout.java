@@ -381,6 +381,7 @@ public final class PartLayout {
 				}
 			}
 		}
+		files.addAll(timeline.photoFiles());
 		return files;
 	}
 

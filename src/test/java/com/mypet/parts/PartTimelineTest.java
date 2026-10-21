@@ -90,6 +90,57 @@ class PartTimelineTest {
 		assertEquals(Json.write(layout.toJson()), Json.write(again.toJson()));
 	}
 
+	private static PartTimeline.Key photoKey(int t, String photo) {
+		PartTimeline.Key key = key(t, 0, true);
+		key.photo = photo;
+		return key;
+	}
+
+	@Test
+	void photoKeysSwitchPhotosUntilTheNextPhotoKey() {
+		// 쉴 때 20초마다 19초~20초 브이: 0초 원래 사진, 19초 브이 사진, 반복
+		PartTimeline.Clip idle = clip(20_000, true, photoKey(0, PartTimeline.BASE_PHOTO), key(5_000, 30, true), photoKey(19_000, "vsign.png"));
+		assertTrue(idle.photoAt(PartLayout.LEFT_ARM, 10_000).base());
+		assertEquals("vsign.png", idle.photoAt(PartLayout.LEFT_ARM, 19_500).name());
+		assertTrue(idle.photoAt(PartLayout.LEFT_ARM, 20_100).base()); // 다음 바퀴
+		assertEquals("vsign.png", idle.photoAt(PartLayout.LEFT_ARM, 39_000).name());
+		assertNull(idle.photoAt(PartLayout.RIGHT_ARM, 19_500)); // 사진 키가 없는 부위
+
+		// 반복이면 첫 사진 키 전에는 앞 바퀴의 마지막 사진, 한 번이면 원래대로(null)
+		PartTimeline.Clip loop = clip(1_000, true, photoKey(500, "a.png"));
+		assertEquals("a.png", loop.photoAt(PartLayout.LEFT_ARM, 100).name());
+		PartTimeline.Clip once = clip(1_000, false, photoKey(500, "a.png"));
+		assertNull(once.photoAt(PartLayout.LEFT_ARM, 100));
+		assertEquals("a.png", once.photoAt(PartLayout.LEFT_ARM, 5_000).name());
+
+		// 반 넘게 켜진 상황의 사진이 먼저, 아니면 "항상"
+		PartLayout layout = PartLayout.defaults();
+		layout.timeline.clips.put(PartAnimation.IDLE, idle);
+		layout.timeline.clips.put(PartAnimation.ALWAYS, clip(1_000, true, photoKey(0, "always.png")));
+		java.util.Map<String, Double> weights = new java.util.HashMap<>();
+		java.util.Map<String, Double> elapsed = new java.util.HashMap<>(java.util.Map.of(PartAnimation.IDLE, 19_200.0));
+		assertEquals("always.png", layout.timeline.photo(PartLayout.LEFT_ARM, weights, elapsed).name());
+		weights.put(PartAnimation.IDLE, 0.6);
+		assertEquals("vsign.png", layout.timeline.photo(PartLayout.LEFT_ARM, weights, elapsed).name());
+
+		// 키 사진은 지우면 안 되는 사진, 좌우 맞추기로 복사하면 뒤집혀서
+		assertTrue(layout.imageFiles().contains("vsign.png"));
+		layout.mirrorFrom(PartLayout.LEFT_ARM);
+		PartTimeline.Photo mirrored = layout.timeline.clips.get(PartAnimation.IDLE).photoAt(PartLayout.RIGHT_ARM, 19_500);
+		assertEquals("vsign.png", mirrored.name());
+		assertTrue(mirrored.flip());
+
+		// JSON: 사진, 이어서
+		layout.timeline.clips.get(PartAnimation.IDLE).restart = false;
+		PartLayout again = PartLayout.fromJson(Json.read(Json.write(layout.toJson())));
+		assertFalse(again.timeline.clips.get(PartAnimation.IDLE).restart);
+		assertEquals("vsign.png", again.timeline.clips.get(PartAnimation.IDLE).photoAt(PartLayout.LEFT_ARM, 19_500).name());
+		assertEquals(Json.write(layout.toJson()), Json.write(again.toJson()));
+		// 경로가 섞인 사진 이름은 버린다
+		PartLayout bad = PartLayout.fromJson(Json.read("{\"timeline\": {\"idle\": {\"tracks\": {\"leftArm\": [{\"t\": 0, \"photo\": \"../x.png\"}]}}}}"));
+		assertNull(bad.timeline.clips.get(PartAnimation.IDLE).track(PartLayout.LEFT_ARM).get(0).photo);
+	}
+
 	@Test
 	void mirrorCopiesTrackAndWindowGrows() {
 		PartLayout layout = PartLayout.defaults();

@@ -8,12 +8,16 @@ import java.util.Map;
 
 /**
  * "모습 꾸미기 → 고급": 상황마다 시간 막대(클립) 하나, 부위마다 키프레임 줄.
- * 키프레임 사이는 부드럽게(또는 일정하게) 이어진다. 상황이 시작되면 0초부터 재생하고,
- * 반복이면 되풀이, 아니면 마지막 키프레임 모양으로 멈춘다. 계산은 timeline-editor.js / bit.js 의 clipTransform 과 같다.
+ * 키프레임 사이는 부드럽게(또는 일정하게) 이어진다. 상황이 시작되면 0초부터 재생하고(이어서 = 멈췄던 데서 계속),
+ * 반복이면 되풀이, 아니면 마지막 키프레임 모양으로 멈춘다.
+ * 키에 사진을 넣으면 그 시간부터 다음 사진 키까지 부위 사진이 바뀐다 (섞이지 않고 딱 바뀜).
+ * 계산은 bit.js 의 clipAt / clipPhotoAt 과 같다.
  */
 public final class PartTimeline {
 	public static final int MIN_DURATION_MS = 100;
-	public static final int MAX_DURATION_MS = 10_000;
+	public static final int MAX_DURATION_MS = 60_000;
+	/** 키 사진: 원래(부위) 사진으로 돌아가기. */
+	public static final String BASE_PHOTO = "@base";
 	public static final int DEFAULT_DURATION_MS = 1_000;
 	public static final int MAX_KEYS = 60;
 	private static final int MAX_OFFSET = 200;
@@ -30,6 +34,10 @@ public final class PartTimeline {
 		public int scaleX = 100;
 		public int scaleY = 100;
 		public boolean ease = true;
+		/** 이 시간부터 바꿀 사진 (null = 그대로, {@link #BASE_PHOTO} = 원래 사진, 아니면 parts 폴더의 파일 이름). */
+		public String photo;
+		/** 사진을 좌우로 뒤집어서 (좌우 맞추기로 반대쪽에 복사된 키). */
+		public boolean flip;
 
 		Key copy() {
 			Key copy = new Key();
@@ -40,6 +48,8 @@ public final class PartTimeline {
 			copy.scaleX = scaleX;
 			copy.scaleY = scaleY;
 			copy.ease = ease;
+			copy.photo = photo;
+			copy.flip = flip;
 			return copy;
 		}
 
@@ -47,6 +57,7 @@ public final class PartTimeline {
 			Key copy = copy();
 			copy.dx = -dx;
 			copy.rotation = -rotation;
+			copy.flip = photo != null && !BASE_PHOTO.equals(photo) && !flip;
 			return copy;
 		}
 	}
@@ -55,6 +66,8 @@ public final class PartTimeline {
 	public static final class Clip {
 		public int duration = DEFAULT_DURATION_MS;
 		public boolean loop = true;
+		/** true = 상황이 시작될 때마다 0초부터, false = 이어서 (그 상황이었던 시간만 쌓인다). */
+		public boolean restart = true;
 		/** 부위 → 시간 순 키프레임. */
 		public final Map<String, List<Key>> tracks = new LinkedHashMap<>();
 
@@ -62,6 +75,7 @@ public final class PartTimeline {
 			Clip copy = new Clip();
 			copy.duration = duration;
 			copy.loop = loop;
+			copy.restart = restart;
 			for (Map.Entry<String, List<Key>> entry : tracks.entrySet()) {
 				List<Key> keys = new ArrayList<>();
 				for (Key key : entry.getValue()) {
@@ -107,6 +121,29 @@ public final class PartTimeline {
 			return shape(last, last, 0);
 		}
 
+		/**
+		 * 상황이 elapsedMs 만큼 지났을 때 부위의 사진 (사진 키가 없으면 null).
+		 * 지금 시간보다 앞선 마지막 사진 키를 따르고, 반복이면 처음 사진 키 전에는 앞 바퀴의 마지막 사진 키.
+		 */
+		public Photo photoAt(String part, double elapsedMs) {
+			Key current = null;
+			Key last = null;
+			double t = loop ? elapsedMs % duration : Math.min(elapsedMs, duration);
+			for (Key key : track(part)) {
+				if (key.photo == null) {
+					continue;
+				}
+				last = key;
+				if (key.t <= t) {
+					current = key;
+				}
+			}
+			if (current == null) {
+				current = loop ? last : null;
+			}
+			return current == null ? null : new Photo(current.photo, current.flip);
+		}
+
 		private static PartAnimation.Transform shape(Key a, Key b, double u) {
 			double s = a.ease ? u * u * (3 - 2 * u) : u;
 			return new PartAnimation.Transform(
@@ -125,6 +162,13 @@ public final class PartTimeline {
 				}
 			}
 			return true;
+		}
+	}
+
+	/** 키가 정한 부위 사진: name 이 {@link #BASE_PHOTO} 면 원래 사진. */
+	public record Photo(String name, boolean flip) {
+		public boolean base() {
+			return BASE_PHOTO.equals(name);
 		}
 	}
 
@@ -199,6 +243,38 @@ public final class PartTimeline {
 		return any ? new PartAnimation.Transform(dx, dy, rotation, scaleX, scaleY) : PartAnimation.Transform.NONE;
 	}
 
+	/**
+	 * 지금 보일 부위 사진 (없으면 null = 원래대로). 사진은 섞을 수 없어서
+	 * 반 넘게 켜진 상황의 사진이 먼저, 없으면 "항상"의 사진.
+	 */
+	public Photo photo(String part, Map<String, Double> weights, Map<String, Double> elapsedMs) {
+		for (String state : PartAnimation.STATES) {
+			if (PartAnimation.ALWAYS.equals(state) || weights.getOrDefault(state, 0.0) < 0.5) {
+				continue;
+			}
+			Photo photo = clips.get(state).photoAt(part, elapsedMs.getOrDefault(state, 0.0));
+			if (photo != null) {
+				return photo;
+			}
+		}
+		return clips.get(PartAnimation.ALWAYS).photoAt(part, elapsedMs.getOrDefault(PartAnimation.ALWAYS, 0.0));
+	}
+
+	/** 키에 쓰인 사진 파일 이름들 (지우면 안 되는 사진). */
+	public java.util.Set<String> photoFiles() {
+		java.util.Set<String> files = new java.util.LinkedHashSet<>();
+		for (Clip clip : clips.values()) {
+			for (List<Key> keys : clip.tracks.values()) {
+				for (Key key : keys) {
+					if (key.photo != null && !BASE_PHOTO.equals(key.photo)) {
+						files.add(key.photo);
+					}
+				}
+			}
+		}
+		return files;
+	}
+
 	/** 두 모양 더하기 (옮기기·돌리기는 더하고, 크기는 곱한다). */
 	public static PartAnimation.Transform combine(PartAnimation.Transform a, PartAnimation.Transform b) {
 		if (b.isIdentity()) {
@@ -238,6 +314,7 @@ public final class PartTimeline {
 			Map<String, Object> item = new LinkedHashMap<>();
 			item.put("duration", clip.duration);
 			item.put("loop", clip.loop);
+			item.put("restart", clip.restart);
 			Map<String, Object> tracks = new LinkedHashMap<>();
 			for (Map.Entry<String, List<Key>> track : clip.tracks.entrySet()) {
 				if (track.getValue().isEmpty()) {
@@ -253,6 +330,8 @@ public final class PartTimeline {
 					k.put("scaleX", key.scaleX);
 					k.put("scaleY", key.scaleY);
 					k.put("ease", key.ease);
+					k.put("photo", key.photo);
+					k.put("flip", key.flip);
 					keys.add(k);
 				}
 				tracks.put(track.getKey(), keys);
@@ -275,6 +354,7 @@ public final class PartTimeline {
 			Clip clip = timeline.clips.get(state);
 			clip.duration = clamp(item.get("duration"), DEFAULT_DURATION_MS, MIN_DURATION_MS, MAX_DURATION_MS);
 			clip.loop = !Boolean.FALSE.equals(item.get("loop"));
+			clip.restart = !Boolean.FALSE.equals(item.get("restart"));
 			if (!(item.get("tracks") instanceof Map<?, ?> tracks)) {
 				continue;
 			}
@@ -295,6 +375,12 @@ public final class PartTimeline {
 					key.scaleX = clamp(k.get("scaleX"), 100, MIN_SCALE, MAX_SCALE);
 					key.scaleY = clamp(k.get("scaleY"), 100, MIN_SCALE, MAX_SCALE);
 					key.ease = !Boolean.FALSE.equals(k.get("ease"));
+					if (BASE_PHOTO.equals(k.get("photo"))) {
+						key.photo = BASE_PHOTO;
+					} else {
+						key.photo = PartLayout.safeFileName(k.get("photo"));
+					}
+					key.flip = key.photo != null && !key.photo.equals(BASE_PHOTO) && Boolean.TRUE.equals(k.get("flip"));
 					keys.add(key);
 				}
 				keys.sort(Comparator.comparingInt(k -> k.t));
