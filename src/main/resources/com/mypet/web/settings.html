@@ -68,8 +68,8 @@
     <!-- 화면에 있는 부위 (많으면 옆으로 넘겨 보기) + 부위 추가/빼기 -->
     <div class="part-picker-row">
       <div class="part-picker" id="parts-tabs"></div>
-      <button class="btn btn-small" id="parts-add" title="부위 추가: 새로 만들기 / 가져오기">＋ 부위</button>
-      <button class="btn btn-small btn-danger" id="parts-remove" title="고른 부위를 화면에서 빼기 (가져오기로 다시 넣을 수 있어요)">빼기</button>
+      <button class="btn btn-small" id="parts-add" title="부위 추가">＋ 부위</button>
+      <button class="btn btn-small btn-danger" id="parts-remove" title="부위 빼기">빼기</button>
     </div>
     <!-- 부위 추가 창 (미리보기 위에 겹쳐 뜬다) -->
     <div class="box parts-add-panel" id="parts-add-panel" hidden>
@@ -87,23 +87,23 @@
         <b id="paint-title">그리기</b>
         <span class="paint-head-buttons">
           <span class="paint-size" id="paint-size"></span>
-          <button class="btn btn-small" id="paint-cancel" title="그리지 않고 닫기 (Esc)">취소</button>
+          <button class="btn btn-small" id="paint-cancel">취소</button>
           <button class="btn btn-small btn-primary" id="paint-save">저장</button>
         </span>
       </div>
       <div class="paint-tools">
         <button class="seg selected" data-tool="pen" data-icon="pen" title="펜"></button>
-        <button class="seg" data-tool="eraser" data-icon="eraser" title="지우개 (오른쪽 버튼으로도 지워져요)"></button>
+        <button class="seg" data-tool="eraser" data-icon="eraser" title="지우개"></button>
         <button class="seg" data-tool="fill" data-icon="fill" title="채우기"></button>
-        <button class="seg" data-tool="picker" data-icon="picker" title="스포이트 (색 가져오기)"></button>
-        <label class="paint-scale" title="칸 크기: 1배 = 화면 1px 이 1칸 (비트와 같은 도트)">칸 <select id="paint-scale">
+        <button class="seg" data-tool="picker" data-icon="picker" title="스포이트"></button>
+        <label class="paint-scale" title="칸 크기">칸 <select id="paint-scale">
           <option value="1">1배</option><option value="2">2배</option><option value="4">4배</option>
         </select></label>
-        <button class="btn btn-small" id="paint-undo" data-icon="undo" title="되돌리기 (Ctrl+Z)"></button>
-        <button class="btn btn-small" id="paint-redo" data-icon="redo" title="다시 하기 (Ctrl+Y)"></button>
+        <button class="btn btn-small" id="paint-undo" data-icon="undo" title="되돌리기"></button>
+        <button class="btn btn-small" id="paint-redo" data-icon="redo" title="다시 하기"></button>
         <button class="btn btn-small btn-danger" id="paint-clear" data-icon="trash" title="모두 지우기"></button>
       </div>
-      <canvas id="paint-canvas" class="paint-canvas" aria-label="도트 그림판" title="왼쪽 버튼: 칠하기 · 오른쪽 버튼: 지우기"></canvas>
+      <canvas id="paint-canvas" class="paint-canvas" aria-label="도트 그림판"></canvas>
       <div class="paint-palette">
         <span class="paint-current" id="paint-current" title="지금 색"></span>
         <span id="paint-palette" class="paint-swatches"></span>
@@ -127,12 +127,12 @@
       <label>Y <input id="parts-y" type="number" step="1"></label>
       <label>너비 <input id="parts-w" type="number" step="1" min="2"></label>
       <label>높이 <input id="parts-h" type="number" step="1" min="2"></label>
-      <label>회전 <input id="parts-rotation" type="number" step="5" title="도 (시계 방향)"></label>
+      <label>회전 <input id="parts-rotation" type="number" step="5"></label>
     </div>
     <div class="button-row three">
       <button class="btn btn-primary" id="parts-photo" data-icon="camera"><span class="label">사진 넣기</span></button>
       <button class="btn" id="parts-photo-remove" data-icon="camera-off" title="사진 빼기">빼기</button>
-      <button class="btn" id="parts-draw" data-icon="brush" title="도트 그림판으로 그려서 넣기">그리기</button>
+      <button class="btn" id="parts-draw" data-icon="brush" title="그림판">그리기</button>
     </div>
     </div>
     <!-- 움직임: 상황(항상/쉴 때/걸을 때/공중/잡힐 때)마다 자세 + 반복 움직임 (parts-editor.js, bit.js 의 partTransform) -->
@@ -141,8 +141,8 @@
       <div class="part-fields anim-fields">
         <label>X 이동 <input id="anim-dx" type="number" step="1"></label>
         <label>Y 이동 <input id="anim-dy" type="number" step="1"></label>
-        <label>회전 <input id="anim-rotation" type="number" step="5" title="도 (시계 방향)"></label>
-        <label>중심 <select id="anim-pivot" title="돌리기·늘이기의 기준점"></select></label>
+        <label>회전 <input id="anim-rotation" type="number" step="5"></label>
+        <label>중심 <select id="anim-pivot"></select></label>
       </div>
       <div class="part-tabs motion-types" id="motion-types"></div>
       <div id="motion-settings">
@@ -159,15 +159,15 @@
     <div id="parts-advanced" class="off">
       <div class="part-tabs anim-states" id="tl-states"></div>
       <div class="tl-transport">
-        <button class="btn btn-small" id="tl-play" title="재생 / 멈춤 (스페이스)">▶</button>
-        <button class="btn btn-small" id="tl-add" title="지금 시간에 키 넣기 (줄 두 번 누르기)">◆+</button>
-        <button class="btn btn-small btn-danger" id="tl-delete" title="지금 시간의 키 빼기 (Delete)">◆−</button>
+        <button class="btn btn-small" id="tl-play" title="재생">▶</button>
+        <button class="btn btn-small" id="tl-add" title="키 넣기">◆+</button>
+        <button class="btn btn-small btn-danger" id="tl-delete" title="키 빼기">◆−</button>
         <label class="tl-length">길이 <input id="tl-duration" type="number" step="0.1" min="0.1" max="60">초</label>
-        <label class="check" title="끝나면 처음부터 다시"><input type="checkbox" id="tl-loop"> 반복</label>
-        <label class="check" title="그 상황이 끝났다가 다시 시작하면, 처음부터가 아니라 멈췄던 데서 이어서 (쉴 때 20초마다 같은 동작에)"><input type="checkbox" id="tl-continue"> 이어서</label>
-        <button class="btn btn-small tl-photo" id="tl-photo" data-icon="camera" title="지금 시간부터 사진 바꾸기"></button>
-        <button class="btn btn-small" id="tl-photo-remove" data-icon="camera-off" title="지금 시간 키의 사진 빼기"></button>
-        <button class="btn btn-small" id="tl-draw" data-icon="brush" title="도트 그림판으로 그려서 지금 시간 키에 넣기"></button>
+        <label class="check"><input type="checkbox" id="tl-loop"> 반복</label>
+        <label class="check"><input type="checkbox" id="tl-continue"> 이어서</label>
+        <button class="btn btn-small tl-photo" id="tl-photo" data-icon="camera" title="사진 넣기"></button>
+        <button class="btn btn-small" id="tl-photo-remove" data-icon="camera-off" title="사진 빼기"></button>
+        <button class="btn btn-small" id="tl-draw" data-icon="brush" title="그림판"></button>
       </div>
       <canvas id="tl-canvas" class="tl-canvas" aria-label="시간 막대"></canvas>
       <div class="part-fields tl-fields">
@@ -176,7 +176,7 @@
         <label>회전 <input id="tl-rotation" type="number" step="5"></label>
         <label>가로 % <input id="tl-scaleX" type="number" step="5" min="10" max="400"></label>
         <label>세로 % <input id="tl-scaleY" type="number" step="5" min="10" max="400"></label>
-        <label title="다음 키까지 천천히 시작해서 천천히 멈추기">부드럽게 <input id="tl-ease" type="checkbox"></label>
+        <label>부드럽게 <input id="tl-ease" type="checkbox"></label>
       </div>
     </div>
     </div>

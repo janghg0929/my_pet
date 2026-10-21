@@ -435,7 +435,7 @@
       }
       var more = document.createElement("button");
       more.className = "btn btn-small add-more";
-      more.title = "이름 수정, 삭제";
+      more.title = "메뉴";
       more.addEventListener("click", function () {
         self.openMenu = self.openMenu === key ? null : key;
         self.armedDelete = null;
@@ -460,7 +460,7 @@
         var custom = window.BitView.isCustom(key);
         remove.textContent = self.armedDelete === key ? "정말 삭제?" : "삭제";
         remove.disabled = !custom;
-        remove.title = custom ? "이 부위를 완전히 지워요 (되돌리기 Ctrl+Z)" : "기본 부위는 지울 수 없어요 (화면에서 빼기만)";
+        remove.title = custom ? "" : "기본 부위는 못 지워요";
         remove.addEventListener("click", function () {
           if (self.armedDelete !== key) {
             self.armedDelete = key;
@@ -899,21 +899,10 @@
       }
     });
     document.getElementById("parts-symmetric").checked = !!this.layout.symmetric;
-    // 버튼은 짧게 (어느 부위인지는 탭에 보인다), 자세한 건 마우스를 올리면
+    // 버튼은 짧게 (어느 부위인지는 탭에 보인다)
     var photo = document.getElementById("parts-photo");
-    var label = this.selected === "eyes" ? "'" + labelOf(this.expression) + "' 눈 사진" : window.BitView.partName(this.layout, this.selected) + " 사진";
     window.BitView.setText(photo.querySelector(".label"), this.hasImage() ? "사진 바꾸기" : "사진 넣기");
-    photo.title = (this.hasImage() ? "바꾸기: " : "넣기: ") + label;
     document.getElementById("parts-photo-remove").disabled = !this.hasImage();
-
-    function labelOf(key) {
-      for (var n = 0; n < EXPRESSIONS.length; n++) {
-        if (EXPRESSIONS[n].key === key) {
-          return EXPRESSIONS[n].label;
-        }
-      }
-      return key;
-    }
   };
 
   // ---------------------------------------------------------------- 좌우 맞추기

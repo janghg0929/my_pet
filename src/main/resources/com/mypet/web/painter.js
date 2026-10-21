@@ -75,7 +75,7 @@
     var body = document.createElement("button");
     body.className = "paint-swatch paint-body";
     body.textContent = "몸";
-    body.title = "몸 색 (색깔 설정을 따라 바뀌어요)";
+    body.title = "몸 색";
     body.setAttribute("data-color", "body");
     body.addEventListener("click", function () { self.setColor({ hex: self.bodyColor(), body: true }); });
     palette.appendChild(body);

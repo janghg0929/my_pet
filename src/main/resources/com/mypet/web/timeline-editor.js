@@ -387,7 +387,8 @@
     document.getElementById("tl-continue").checked = !clip.restart;
     var keyHasPhoto = !!(key && key.photo);
     var photo = document.getElementById("tl-photo");
-    photo.title = keyHasPhoto ? "지금 시간 키의 사진 바꾸기" : "지금 시간부터 사진 바꾸기";
+    photo.removeAttribute("title");
+    photo.setAttribute("data-tip", keyHasPhoto ? "사진 바꾸기" : "사진 넣기");
     document.getElementById("tl-photo-remove").disabled = !keyHasPhoto;
     var ease = document.getElementById("tl-ease");
     ease.checked = key ? key.ease : true;
