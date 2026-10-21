@@ -113,11 +113,12 @@ class PartLayoutTest {
 		PartLayout again = PartLayout.fromJson(Json.read(Json.write(layout.toJson())));
 		assertEquals(Json.write(layout.toJson()), Json.write(again.toJson()));
 
-		// 새로 만들기: 몸통 가운데 4x4 점
+		// 새로 만들기: 몸통 가운데 24x24 점
 		PartLayout.Part made = PartLayout.newCustomPart(layout.body(), "점");
-		assertEquals(20, made.x);
-		assertEquals(12, made.y);
-		assertEquals(4, made.w);
+		assertEquals(10, made.x);
+		assertEquals(2, made.y);
+		assertEquals(24, made.w);
+		assertEquals(24, made.h);
 	}
 
 	@Test

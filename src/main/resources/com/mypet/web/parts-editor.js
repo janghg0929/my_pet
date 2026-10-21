@@ -9,6 +9,7 @@
   // 부위 고르기 순서 (만든 부위는 뒤에 붙는다)
   var PART_ORDER = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
   var MAX_CUSTOM = 20;
+  var CUSTOM_SIZE = 24; // 새로 만든 부위의 크기 (PartLayout.CUSTOM_SIZE)
   var MAX_RESOLUTION = 256; // 그림판 해상도 한쪽 칸 수 (PartLayout.MAX_RESOLUTION)
   var EXPRESSIONS = [{ key: "neutral", label: "평소" }, { key: "grab", label: "잡혔을 때" }, { key: "fall", label: "떨어질 때" }];
 
@@ -689,7 +690,8 @@
       } while (this.layout[key]);
       var body = this.layout.body;
       this.layout[key] = window.BitView.normalizePart(key, {
-        x: Math.round(body.x + body.w / 2 - 2), y: Math.round(body.y + body.h / 2 - 2), w: 4, h: 4,
+        x: Math.round(body.x + body.w / 2 - CUSTOM_SIZE / 2), y: Math.round(body.y + body.h / 2 - CUSTOM_SIZE / 2),
+        w: CUSTOM_SIZE, h: CUSTOM_SIZE,
         shape: "dot", name: name, image: null, flip: false
       });
       this.selected = key;

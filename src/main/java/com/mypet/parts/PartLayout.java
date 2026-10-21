@@ -23,6 +23,8 @@ public final class PartLayout {
 	/** 사용자가 만든 부위 이름 앞머리, 최대 개수. */
 	public static final String CUSTOM_PREFIX = "c_";
 	public static final int MAX_CUSTOM = 20;
+	/** 새로 만든 부위의 크기 (가로·세로 px). */
+	public static final int CUSTOM_SIZE = 24;
 	public static final int MAX_NAME_LENGTH = 20;
 	/** 사진이 없을 때 모양: 네모(몸 색 + 외곽선) 또는 검은 점(새로 만든 부위). */
 	public static final String SHAPE_RECT = "rect";
@@ -224,7 +226,7 @@ public final class PartLayout {
 
 	/** 새로 만든 부위: 몸통 가운데의 작은 검은 점. */
 	public static Part newCustomPart(Part body, String name) {
-		Part part = new Part(body.x + body.w / 2 - 2, body.y + body.h / 2 - 2, 4, 4);
+		Part part = new Part(body.x + body.w / 2 - CUSTOM_SIZE / 2, body.y + body.h / 2 - CUSTOM_SIZE / 2, CUSTOM_SIZE, CUSTOM_SIZE);
 		part.shape = SHAPE_DOT;
 		part.name = cleanName(name);
 		return part;

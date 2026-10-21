@@ -271,7 +271,8 @@ class WebSettingsPreviewTest {
 		System.out.println("custom part: " + tailKey + " name=" + (tailKey == null ? null : withTail.nameOf(tailKey))
 			+ " tabs=" + evalScript(settings[0], "Array.prototype.map.call(document.querySelectorAll('#parts-tabs .seg'), function (b) { return b.textContent; }).join(',')")
 			+ " | " + edges(settings[0].dialog()));
-		assertTrue(tailKey != null && "꼬리".equals(withTail.nameOf(tailKey)) && com.mypet.parts.PartLayout.SHAPE_DOT.equals(withTail.get(tailKey).shape),
+		assertTrue(tailKey != null && "꼬리".equals(withTail.nameOf(tailKey)) && com.mypet.parts.PartLayout.SHAPE_DOT.equals(withTail.get(tailKey).shape)
+			&& withTail.get(tailKey).w == 24 && withTail.get(tailKey).h == 24,
 			"새 부위 만들기");
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "부위를 더해도 창 크기 그대로: " + settings[0].dialog().getHeight());
 		// [빼기] → 가져오기 목록에 [가져오기] → 다시 넣기, ⋮ → 이름 수정 → 삭제(두 번)
