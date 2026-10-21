@@ -9,6 +9,7 @@
   // 부위 고르기 순서 (만든 부위는 뒤에 붙는다)
   var PART_ORDER = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
   var MAX_CUSTOM = 20;
+  var MAX_RESOLUTION = 256; // 그림판 해상도 한쪽 칸 수 (PartLayout.MAX_RESOLUTION)
   var EXPRESSIONS = [{ key: "neutral", label: "평소" }, { key: "grab", label: "잡혔을 때" }, { key: "fall", label: "떨어질 때" }];
 
   var MIRROR = { leftArm: "rightArm", rightArm: "leftArm", leftLeg: "rightLeg", rightLeg: "leftLeg" };
@@ -151,6 +152,7 @@
       self.send("resetParts");
     });
 
+    this.buildPartMenu();
     this.canvas.addEventListener("mousedown", function (event) { self.onMouseDown(event); });
     this.canvas.addEventListener("mousemove", function (event) { self.onHover(event); });
     document.addEventListener("mousemove", function (event) { self.onMouseMove(event); });
@@ -166,6 +168,14 @@
     // Ctrl+Z 되돌리기, Ctrl+Y / Ctrl+Shift+Z 다시 하기 (모습 꾸미기 화면에서만)
     document.addEventListener("keydown", function (event) {
       if (!self.visible) {
+        return;
+      }
+      if (self.partMenuOpen()) {
+        if (event.keyCode === 27 || event.key === "Escape") {
+          self.closePartMenu();
+        } else if (event.keyCode === 13 || event.key === "Enter") {
+          self.applyPartMenu();
+        }
         return;
       }
       // 그림판이 열려 있으면 그림판 키 (Ctrl+Z/Y 는 그림판 되돌리기, Esc 는 닫기)
@@ -253,15 +263,20 @@
     }
     var image = name ? window.BitView.images[name] : null;
     document.getElementById("parts-add-panel").hidden = true;
+    this.closePartMenu();
     this.painter.open({
       title: title,
       width: part.w,
       height: part.h,
+      gridW: part.resW,
+      gridH: part.resH,
       image: image && image.complete && image.naturalWidth > 0 ? image : null,
       base: key === "eyes" ? "none" : (part.shape === "dot" ? "dot" : "rect"),
       bodyColor: this.getColor,
-      onSave: function (url) {
+      onSave: function (url, gridW, gridH) {
         pending.url = url;
+        pending.gridW = gridW;
+        pending.gridH = gridH;
         self.pendingDrawing = pending;
         self.send("saveDrawing", url);
       }
@@ -282,6 +297,10 @@
     window.BitView.images[name] = image;
     var self = this;
     image.onload = function () { self.draw(); };
+    var drawn = this.layout[pending.key];
+    if (drawn && pending.gridW > 0) {
+      this.setResolution(drawn, pending.gridW, pending.gridH);
+    }
     if (pending.mode === "key") {
       this.tl.pendingPhoto = { state: pending.state, part: pending.key, t: pending.t };
       this.onPickedImage(name);
@@ -302,6 +321,161 @@
     this.refreshControls();
     this.draw();
     this.commit(0);
+  };
+
+  // ---------------------------------------------------------------- 우클릭 메뉴: 그림판 해상도
+
+  /** 부위의 그림판 해상도 (칸 수): 정해 둔 값, 없으면 부위 크기. */
+  PartsEditor.prototype.resolutionOf = function (part) {
+    return part.resW > 0 && part.resH > 0 ? { w: part.resW, h: part.resH } : { w: part.w, h: part.h };
+  };
+
+  /** 해상도를 부위에 기억한다 (부위 크기와 같으면 0: 부위 크기를 바꾸면 따라간다). */
+  PartsEditor.prototype.setResolution = function (part, w, h) {
+    w = Math.max(1, Math.min(MAX_RESOLUTION, Math.round(w)));
+    h = Math.max(1, Math.min(MAX_RESOLUTION, Math.round(h)));
+    var same = w === part.w && h === part.h;
+    part.resW = same ? 0 : w;
+    part.resH = same ? 0 : h;
+  };
+
+  PartsEditor.prototype.buildPartMenu = function () {
+    var self = this;
+    var menu = document.getElementById("part-menu");
+    if (!menu) {
+      return;
+    }
+    // 오른쪽 버튼을 뗄 때 연다 (앱 안 웹 엔진은 기본 우클릭 메뉴를 꺼 두면 contextmenu 를 안 보낸다)
+    this.canvas.addEventListener("mouseup", function (event) {
+      if (event.button !== 2) {
+        return;
+      }
+      var p = self.pointer(event);
+      var target = self.hit(p.x, p.y);
+      if (target) {
+        self.openPartMenu(target.key, event);
+      }
+    });
+    var tabs = document.getElementById("parts-tabs");
+    tabs.addEventListener("mouseup", function (event) {
+      var button = event.button === 2 && event.target.closest ? event.target.closest("[data-part]") : null;
+      if (button) {
+        self.openPartMenu(button.getAttribute("data-part"), event);
+      }
+    });
+    [this.canvas, tabs].forEach(function (element) {
+      element.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+    });
+    ["part-menu-w", "part-menu-h"].forEach(function (id) {
+      document.getElementById(id).addEventListener("input", function () { self.refreshPartMenuHint(); });
+    });
+    document.getElementById("part-menu-fit").addEventListener("click", function () {
+      var part = self.layout[self.menuKey];
+      if (part) {
+        document.getElementById("part-menu-w").value = part.w;
+        document.getElementById("part-menu-h").value = part.h;
+        self.refreshPartMenuHint();
+      }
+    });
+    document.getElementById("part-menu-apply").addEventListener("click", function () { self.applyPartMenu(); });
+    document.getElementById("part-menu-draw").addEventListener("click", function () {
+      var key = self.menuKey;
+      if (self.applyPartMenu() && key) {
+        self.openPainter(self.advanced() ? "key" : "part");
+      }
+    });
+    // 메뉴 밖을 누르면 닫는다
+    document.addEventListener("mousedown", function (event) {
+      if (self.partMenuOpen() && !menu.contains(event.target)) {
+        self.closePartMenu();
+      }
+    }, true);
+  };
+
+  PartsEditor.prototype.partMenuOpen = function () {
+    var menu = document.getElementById("part-menu");
+    return !!menu && !menu.hidden;
+  };
+
+  /** 부위를 고르고 마우스 자리에 해상도 메뉴를 띄운다. */
+  PartsEditor.prototype.openPartMenu = function (key, event) {
+    var part = this.layout[key];
+    if (!part) {
+      return;
+    }
+    if (key !== this.selected) {
+      this.select(key);
+    }
+    this.menuKey = key;
+    var res = this.resolutionOf(part);
+    document.getElementById("part-menu-name").textContent = window.BitView.partName(this.layout, key) + " · 그림판 해상도";
+    document.getElementById("part-menu-w").value = res.w;
+    document.getElementById("part-menu-h").value = res.h;
+    this.refreshPartMenuHint();
+    var menu = document.getElementById("part-menu");
+    var view = menu.offsetParent || document.body;
+    var box = view.getBoundingClientRect();
+    menu.hidden = false;
+    // 창 밖으로 나가지 않게
+    var x = Math.min(event.clientX - box.left, view.clientWidth - menu.offsetWidth - 8);
+    var y = Math.min(event.clientY - box.top, view.clientHeight - menu.offsetHeight - 8);
+    menu.style.left = Math.max(4, x) + "px";
+    menu.style.top = Math.max(4, y) + "px";
+    var input = document.getElementById("part-menu-w");
+    input.focus();
+    input.select();
+  };
+
+  PartsEditor.prototype.closePartMenu = function () {
+    var menu = document.getElementById("part-menu");
+    if (menu) {
+      menu.hidden = true;
+    }
+    this.menuKey = null;
+  };
+
+  /** 메뉴 칸의 값 (틀리면 null). */
+  PartsEditor.prototype.partMenuValue = function () {
+    var w = parseInt(document.getElementById("part-menu-w").value, 10);
+    var h = parseInt(document.getElementById("part-menu-h").value, 10);
+    if (!(w >= 1 && h >= 1)) {
+      return null;
+    }
+    return { w: Math.min(MAX_RESOLUTION, w), h: Math.min(MAX_RESOLUTION, h) };
+  };
+
+  PartsEditor.prototype.refreshPartMenuHint = function () {
+    var part = this.layout[this.menuKey];
+    if (!part) {
+      return;
+    }
+    var value = this.partMenuValue();
+    var text = "부위 " + part.w + "×" + part.h + "px";
+    if (!value) {
+      text += " · 1~" + MAX_RESOLUTION + " 사이로 써 주세요";
+    } else if (value.w !== part.w || value.h !== part.h) {
+      var k = value.w / part.w;
+      text += " · 1칸 = " + (k >= 1 ? "1/" + (Math.round(k * 10) / 10) : (Math.round(10 / k) / 10)) + "px";
+    }
+    document.getElementById("part-menu-hint").textContent = text;
+    document.getElementById("part-menu-apply").disabled = !value;
+    document.getElementById("part-menu-draw").disabled = !value;
+  };
+
+  /** 메뉴의 해상도를 부위에 넣는다. 다음에 그림판을 열면 이 칸 수로 그린다. */
+  PartsEditor.prototype.applyPartMenu = function () {
+    var part = this.layout[this.menuKey];
+    var value = this.partMenuValue();
+    if (!part || !value) {
+      return false;
+    }
+    var before = this.resolutionOf(part);
+    this.setResolution(part, value.w, value.h);
+    this.closePartMenu();
+    if (before.w !== value.w || before.h !== value.h) {
+      this.commit(0);
+    }
+    return true;
   };
 
   // ---------------------------------------------------------------- 부위 추가/빼기
@@ -800,6 +974,9 @@
   /** 화면에 보일 때 움직임 화면이면 미리보기를 움직인다. */
   PartsEditor.prototype.setVisible = function (visible) {
     this.visible = visible;
+    if (!visible) {
+      this.closePartMenu();
+    }
     this.updateAnimation();
   };
 
@@ -922,6 +1099,8 @@
     t.image = s.image;
     t.flip = !!s.image && !s.flip;
     t.rotation = normalizeRotation(-(s.rotation || 0));
+    t.resW = s.resW || 0;
+    t.resH = s.resH || 0;
     t.pivot = window.BitView.mirroredPivot(s.pivot);
     t.animations = {};
     window.BitView.STATES.forEach(function (state) {
@@ -1216,6 +1395,9 @@
   };
 
   PartsEditor.prototype.onMouseDown = function (event) {
+    if (event.button === 2) {
+      return; // 오른쪽 버튼은 우클릭 메뉴 (contextmenu)
+    }
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
     if (!target) {

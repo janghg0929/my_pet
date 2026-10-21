@@ -341,6 +341,54 @@ class WebSettingsPreviewTest {
 		runScript(settings[0], "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }))");
 		Thread.sleep(400);
 
+		java.lang.reflect.Field panelField = WebSettings.class.getDeclaredField("panel");
+		panelField.setAccessible(true);
+		java.awt.Component panel = (java.awt.Component) panelField.get(settings[0]);
+		// 우클릭 → 해상도: 진짜 마우스 오른쪽 버튼으로 몸통을 누르면 메뉴 → 120×56칸 → [그림판] → 그 칸 수로 그려서 저장
+		String bodyAt = evalScript(settings[0], "var ed = window.bitPartsEditor; var r = ed.partRect('body', ed.previewPose());"
+			+ " var c = document.getElementById('parts-canvas').getBoundingClientRect(); Math.round(c.left + r.x + 5) + ',' + Math.round(c.top + r.cy)");
+		realRightClick(panel, bodyAt);
+		Thread.sleep(300);
+		String menuInfo = evalScript(settings[0], "String(!document.getElementById('part-menu').hidden) + ' ' + document.getElementById('part-menu-name').textContent"
+			+ " + ' ' + document.getElementById('part-menu-w').value + 'x' + document.getElementById('part-menu-h').value + ' drag=' + !!window.bitPartsEditor.drag");
+		snapshot(settings[0], new File(out, "web-parts-resolution-menu.png"));
+		System.out.println("right-click body " + bodyAt + ": " + menuInfo);
+		assertTrue(menuInfo.startsWith("true 몸통") && menuInfo.contains("60x28") && menuInfo.endsWith("drag=false"), "우클릭 → 해상도 메뉴: " + menuInfo);
+		runScript(settings[0], "document.getElementById('part-menu-w').value = '120'; document.getElementById('part-menu-h').value = '56';"
+			+ " document.getElementById('part-menu-w').dispatchEvent(new Event('input')); document.getElementById('part-menu-draw').click();"
+			+ " var p = window.bitPartsEditor.painter; var c = document.getElementById('paint-canvas'); var r = c.getBoundingClientRect(); var l = p.layout();"
+			+ " document.querySelector('.paint-swatch[data-color=\"#e53935\"]').click();"
+			+ " c.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: r.left + l.ox + l.cell * 30.5, clientY: r.top + l.oy + l.cell * 20.5 }));"
+			+ " document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));");
+		Thread.sleep(300);
+		String painterRes = evalScript(settings[0], "document.getElementById('paint-res-w').value + 'x' + document.getElementById('paint-res-h').value"
+			+ " + ' ' + document.getElementById('paint-size').textContent");
+		snapshot(settings[0], new File(out, "web-parts-painter-120.png"));
+		runScript(settings[0], "document.getElementById('paint-save').click()");
+		Thread.sleep(700);
+		com.mypet.parts.PartLayout.Part resBody = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body();
+		java.awt.image.BufferedImage drawnHi = javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(
+			java.util.Base64.getDecoder().decode(drawnImage.get().substring(drawnImage.get().indexOf(',') + 1))));
+		System.out.println("resolution painter: " + painterRes + " → saved " + drawnHi.getWidth() + "x" + drawnHi.getHeight()
+			+ " red at (30,20)=" + Integer.toHexString(drawnHi.getRGB(30, 20)) + " body res=" + resBody.resW + "x" + resBody.resH);
+		assertTrue(painterRes.startsWith("120x56") && drawnHi.getWidth() == 120 && drawnHi.getHeight() == 56
+			&& (drawnHi.getRGB(30, 20) & 0xFFFFFF) == 0xE53935 && resBody.resW == 120 && resBody.resH == 56, "해상도대로 그리기: " + painterRes);
+		// 부위 탭 우클릭도 메뉴 (왼팔 8×8), Esc 로 닫기
+		String tabMenu = evalScript(settings[0], "var b = document.querySelector('#parts-tabs [data-part=leftArm]'); var r = b.getBoundingClientRect();"
+			+ " b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 2, clientX: r.left + 5, clientY: r.top + 5 }));"
+			+ " var s = window.bitPartsEditor.selected + ' ' + document.getElementById('part-menu-w').value + 'x' + document.getElementById('part-menu-h').value;"
+			+ " document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true }));"
+			+ " s + ' ' + document.getElementById('part-menu').hidden");
+		System.out.println("right-click tab: " + tabMenu);
+		assertTrue("leftArm 8x8 true".equals(tabMenu), "탭 우클릭 → 메뉴, Esc 로 닫기: " + tabMenu);
+		// 되돌리기 두 번 (그림, 해상도) → 몸통 해상도도 원래대로
+		runScript(settings[0], "document.querySelector('#parts-tabs [data-part=body]').click();"
+			+ " document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));"
+			+ " document.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));");
+		Thread.sleep(400);
+		com.mypet.parts.PartLayout.Part undoneBody = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body();
+		assertTrue(undoneBody.resW == 0 && undoneBody.image == null, "되돌리기: res=" + undoneBody.resW + " image=" + undoneBody.image);
+
 		// 회전: 몸통 20도, 왼팔 35도 (좌우 맞추기로 오른팔은 -35도), 눈 -10도
 		runScript(settings[0], "function turn(part, deg) { document.querySelector('#parts-tabs [data-part=' + part + ']').click();"
 			+ " var r = document.getElementById('parts-rotation'); r.value = String(deg); r.dispatchEvent(new Event('input')); }"
@@ -403,9 +451,6 @@ class WebSettingsPreviewTest {
 		String canvasCenter = evalScript(settings[0], "var b = document.getElementById('parts-canvas').getBoundingClientRect();"
 			+ " Math.round(b.left + 100) + ',' + Math.round(b.top + 80)");
 		String[] xy = canvasCenter.split(",");
-		java.lang.reflect.Field panelField = WebSettings.class.getDeclaredField("panel");
-		panelField.setAccessible(true);
-		java.awt.Component panel = (java.awt.Component) panelField.get(settings[0]);
 		SwingUtilities.invokeAndWait(() -> {
 			for (int i = 0; i < 2; i++) {
 				panel.dispatchEvent(new java.awt.event.MouseWheelEvent(panel, java.awt.event.MouseEvent.MOUSE_WHEEL,
@@ -647,6 +692,26 @@ class WebSettingsPreviewTest {
 				System.currentTimeMillis(), 0, x, y, 1, false, java.awt.event.MouseEvent.BUTTON1));
 			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_CLICKED,
 				System.currentTimeMillis(), 0, x, y, 1, false, java.awt.event.MouseEvent.BUTTON1));
+		});
+	}
+
+	/** 실제 마우스 오른쪽 버튼 누르기 (윈도우처럼 뗄 때 우클릭 메뉴). */
+	private static void realRightClick(java.awt.Component panel, String xy) throws Exception {
+		String[] parts = xy.split(",");
+		int x = Integer.parseInt(parts[0]);
+		int y = Integer.parseInt(parts[1]);
+		SwingUtilities.invokeAndWait(() -> {
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_MOVED,
+				System.currentTimeMillis(), 0, x, y, 0, false));
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_PRESSED,
+				System.currentTimeMillis(), java.awt.event.InputEvent.BUTTON3_DOWN_MASK, x, y, 1, false, java.awt.event.MouseEvent.BUTTON3));
+		});
+		Thread.sleep(80);
+		SwingUtilities.invokeAndWait(() -> {
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_RELEASED,
+				System.currentTimeMillis(), 0, x, y, 1, true, java.awt.event.MouseEvent.BUTTON3));
+			panel.dispatchEvent(new java.awt.event.MouseEvent(panel, java.awt.event.MouseEvent.MOUSE_CLICKED,
+				System.currentTimeMillis(), 0, x, y, 1, false, java.awt.event.MouseEvent.BUTTON3));
 		});
 	}
 

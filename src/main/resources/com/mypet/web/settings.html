@@ -81,6 +81,19 @@
       <p class="add-title">가져오기</p>
       <div class="add-list" id="parts-library"></div>
     </div>
+    <!-- 부위 우클릭 메뉴: 그림판 해상도 -->
+    <div class="box part-menu" id="part-menu" hidden>
+      <b class="menu-name" id="part-menu-name"></b>
+      <label class="menu-res">해상도
+        <input id="part-menu-w" type="number" min="1" max="256">×<input id="part-menu-h" type="number" min="1" max="256">칸
+      </label>
+      <p class="menu-hint" id="part-menu-hint"></p>
+      <div class="menu-buttons">
+        <button class="btn btn-small" id="part-menu-fit" title="부위 크기와 같게">부위 크기로</button>
+        <button class="btn btn-small btn-primary" id="part-menu-apply">적용</button>
+        <button class="btn btn-small" id="part-menu-draw" data-icon="brush" title="그림판"></button>
+      </div>
+    </div>
     <!-- 도트 그림판 (painter.js): 미리보기 위에 겹쳐 뜬다 -->
     <div class="box paint-panel" id="paint-panel" hidden>
       <div class="add-head">
@@ -96,9 +109,9 @@
         <button class="seg" data-tool="eraser" data-icon="eraser" title="지우개"></button>
         <button class="seg" data-tool="fill" data-icon="fill" title="채우기"></button>
         <button class="seg" data-tool="picker" data-icon="picker" title="스포이트"></button>
-        <label class="paint-scale" title="칸 크기">칸 <select id="paint-scale">
-          <option value="1">1배</option><option value="2">2배</option><option value="4">4배</option>
-        </select></label>
+        <label class="paint-res" title="해상도 (가로×세로 칸)">해상도
+          <input id="paint-res-w" type="number" min="1" max="256">×<input id="paint-res-h" type="number" min="1" max="256">
+        </label>
         <button class="btn btn-small" id="paint-undo" data-icon="undo" title="되돌리기"></button>
         <button class="btn btn-small" id="paint-redo" data-icon="redo" title="다시 하기"></button>
         <button class="btn btn-small btn-danger" id="paint-clear" data-icon="trash" title="모두 지우기"></button>

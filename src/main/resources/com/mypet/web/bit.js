@@ -290,6 +290,9 @@
   /** 빠진 값(중심점, 상황별 애니메이션)을 채운다. 예전 미리보기의 part.motion 은 그 "언제" 상황으로 옮긴다. */
   function normalizePart(key, part) {
     part.rotation = part.rotation || 0;
+    // 그림판 해상도 (칸 수, 0 = 부위 크기)
+    part.resW = part.resW > 0 && part.resH > 0 ? Math.min(256, Math.round(part.resW)) : 0;
+    part.resH = part.resW > 0 ? Math.min(256, Math.round(part.resH)) : 0;
     part.visible = part.visible !== false;
     part.shape = part.shape || (isCustom(key) ? "dot" : "rect");
     part.name = part.name || null;
@@ -1123,6 +1126,7 @@
     copyLayout: copyLayout,
     setText: setText,
     setSmoothing: setSmoothing,
+    pixelsOf: pixelsOf,
     bounds: bounds,
     motionBounds: motionBounds,
     MotionClock: MotionClock,

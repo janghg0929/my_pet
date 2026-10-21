@@ -52,6 +52,8 @@ public final class PartLayout {
 	// 부위 크기·자리 한계 (사실상 없음: 화면보다 훨씬 크게)
 	private static final int MAX_SIZE = 2000;
 	private static final int MAX_OFFSET = 2000;
+	/** 그림판 해상도 최대 (한쪽 칸 수, painter.js 의 MAX_SIDE 와 같다). */
+	public static final int MAX_RESOLUTION = 256;
 
 	/** 부위 하나. 사진이 없으면 네모(몸 색 + 외곽선) 또는 검은 점으로 그린다. */
 	public static final class Part {
@@ -71,6 +73,9 @@ public final class PartLayout {
 		public boolean flip;
 		/** 회전 (도, 시계 방향, -179..180). 부위 가운데를 기준으로 돌린다. */
 		public int rotation;
+		/** 그림판 해상도 (가로·세로 칸 수, 0 이면 부위 크기). 부위를 우클릭해서 정한다. */
+		public int resW;
+		public int resH;
 		/** 움직임 중심점 (팔은 몸 쪽, 다리는 위쪽이 기본: 어깨·엉덩이를 기준으로 돈다). */
 		public String pivot = PIVOT_CENTER;
 		/** 상황별 애니메이션 (항상, 쉴 때, 걸을 때, 공중, 잡힐 때 — 5개 모두 있다). */
@@ -93,6 +98,8 @@ public final class PartLayout {
 			copy.image = image;
 			copy.flip = flip;
 			copy.rotation = rotation;
+			copy.resW = resW;
+			copy.resH = resH;
 			copy.pivot = pivot;
 			for (Map.Entry<String, PartAnimation> entry : animations.entrySet()) {
 				copy.animations.put(entry.getKey(), entry.getValue().copy());
@@ -303,6 +310,8 @@ public final class PartLayout {
 		target.image = source.image;
 		target.flip = source.image != null && !source.flip;
 		target.rotation = normalizeRotation(-source.rotation);
+		target.resW = source.resW;
+		target.resH = source.resH;
 		target.pivot = mirrorPivot(source.pivot);
 		for (Map.Entry<String, PartAnimation> entry : source.animations.entrySet()) {
 			target.animations.put(entry.getKey(), entry.getValue().mirrored());
@@ -498,6 +507,8 @@ public final class PartLayout {
 			item.put("w", part.w);
 			item.put("h", part.h);
 			item.put("rotation", part.rotation);
+			item.put("resW", part.resW);
+			item.put("resH", part.resH);
 			item.put("pivot", part.pivot);
 			Map<String, Object> animations = new LinkedHashMap<>();
 			for (Map.Entry<String, PartAnimation> animation : part.animations.entrySet()) {
@@ -553,6 +564,12 @@ public final class PartLayout {
 			part.w = clampInt(item.get("w"), part.w, MIN_SIZE, MAX_SIZE);
 			part.h = clampInt(item.get("h"), part.h, MIN_SIZE, MAX_SIZE);
 			part.rotation = normalizeRotation(clampInt(item.get("rotation"), 0, -100_000, 100_000));
+			part.resW = clampInt(item.get("resW"), 0, 0, MAX_RESOLUTION);
+			part.resH = clampInt(item.get("resH"), 0, 0, MAX_RESOLUTION);
+			if (part.resW == 0 || part.resH == 0) {
+				part.resW = 0;
+				part.resH = 0;
+			}
 			if (item.get("pivot") instanceof String pivot && PIVOTS.contains(pivot)) {
 				part.pivot = pivot;
 			}

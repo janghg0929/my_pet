@@ -551,20 +551,65 @@ button {
   font-size: 12px;
 }
 
-.paint-scale {
+.paint-res {
   display: flex;
   align-items: center;
   gap: 4px;
   margin-left: auto;
 }
 
-.paint-scale select {
-  min-width: 58px;
+.paint-res input,
+.part-menu input {
+  width: 52px;
   height: 24px;
+  padding: 0 4px;
   border: var(--border) solid var(--ink);
   background: var(--box);
-  font: inherit;
+  font-family: var(--mono);
   font-size: 12px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* 부위 우클릭 메뉴 */
+.part-menu {
+  position: absolute;
+  z-index: 13;
+  min-width: 220px;
+  padding: 8px 10px 10px;
+}
+
+.part-menu[hidden] {
+  display: none;
+}
+
+.part-menu .menu-name {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.part-menu .menu-res {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.part-menu .menu-hint {
+  margin: 6px 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.part-menu .menu-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.part-menu .btn-small {
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
 .paint-canvas {

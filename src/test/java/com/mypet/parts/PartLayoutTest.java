@@ -201,4 +201,31 @@ class PartLayoutTest {
 		assertTrue(Files.exists(dir.resolve("parts").resolve(keep)));
 		assertFalse(Files.exists(dir.resolve("parts").resolve(drop)));
 	}
+
+	@Test
+	void paintResolutionRoundTripsAndMirrors() {
+		PartLayout layout = PartLayout.defaults();
+		layout.leftArm().resW = 32;
+		layout.leftArm().resH = 24;
+		layout.mirrorFrom(PartLayout.LEFT_ARM);
+		assertEquals(32, layout.rightArm().resW);
+		PartLayout back = PartLayout.fromJson(Json.read(Json.write(layout.toJson())));
+		assertEquals(32, back.leftArm().resW);
+		assertEquals(24, back.leftArm().resH);
+		assertEquals(0, back.body().resW);
+		// 너무 크면 256, 한쪽만 있으면 없앤다
+		Map<String, Object> json = layout.toJson();
+		@SuppressWarnings("unchecked")
+		Map<String, Object> body = (Map<String, Object>) json.get(PartLayout.BODY);
+		body.put("resW", 5000);
+		body.put("resH", 300);
+		@SuppressWarnings("unchecked")
+		Map<String, Object> eyes = (Map<String, Object>) json.get(PartLayout.EYES);
+		eyes.put("resW", 10);
+		eyes.put("resH", 0);
+		PartLayout clamped = PartLayout.fromJson(json);
+		assertEquals(PartLayout.MAX_RESOLUTION, clamped.body().resW);
+		assertEquals(PartLayout.MAX_RESOLUTION, clamped.body().resH);
+		assertEquals(0, clamped.get(PartLayout.EYES).resW);
+	}
 }

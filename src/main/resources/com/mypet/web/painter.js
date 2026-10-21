@@ -1,4 +1,5 @@
-// 도트 그림판: 부위 크기만큼의 칸(1칸 = 화면 1px, 2배·4배도)에 펜·지우개·채우기·스포이트로 그린다.
+// 도트 그림판: 해상도(가로×세로 칸 수, 기본은 부위 크기 = 1칸이 화면 1px)만큼의 칸에 펜·지우개·채우기·스포이트로 그린다.
+// 해상도는 부위를 우클릭하거나 그림판 위쪽 칸에서 마음대로 정한다 (한쪽 256칸까지).
 // "몸 색" 물감으로 칠한 칸은 알파 254 로 저장해서, 비트가 그릴 때 지금 몸 색으로 바꿔 칠한다 (PartImages.BODY_ALPHA).
 // 저장하면 PNG data URL 을 onSave 로 넘긴다 (Java 가 parts 폴더에 "px_…png" 로 저장).
 (function () {
@@ -48,8 +49,12 @@
         self.refreshTools();
       });
     });
-    document.getElementById("paint-scale").addEventListener("change", function (event) {
-      self.setScale(parseInt(event.target.value, 10) || 1);
+    ["paint-res-w", "paint-res-h"].forEach(function (id) {
+      document.getElementById(id).addEventListener("change", function () {
+        var w = parseInt(document.getElementById("paint-res-w").value, 10);
+        var h = parseInt(document.getElementById("paint-res-h").value, 10);
+        self.setResolution(isNaN(w) ? self.w : w, isNaN(h) ? self.h : h);
+      });
     });
     document.getElementById("paint-undo").addEventListener("click", function () { self.undo(); });
     document.getElementById("paint-redo").addEventListener("click", function () { self.redo(); });
@@ -124,43 +129,43 @@
     }
     document.getElementById("paint-undo").disabled = !this.undoStack.length;
     document.getElementById("paint-redo").disabled = !this.redoStack.length;
+    var resW = document.getElementById("paint-res-w"), resH = document.getElementById("paint-res-h");
+    if (this.data && document.activeElement !== resW) {
+      resW.value = this.w;
+    }
+    if (this.data && document.activeElement !== resH) {
+      resH.value = this.h;
+    }
   };
 
   // ---------------------------------------------------------------- 열기/닫기
 
   /**
-   * options: title, width, height (부위 크기 = 1배 칸 수), image (지금 그림, 없으면 null),
-   * base ("rect" 몸 색 네모+외곽선 / "dot" 검은 점 / "none" 빈칸: 그림이 없을 때 시작 모습),
-   * bodyColor() (지금 몸 색), onSave(dataUrl).
+   * options: title, width, height (부위 크기), gridW, gridH (해상도: 칸 수, 없으면 그림 크기나 부위 크기),
+   * image (지금 그림, 없으면 null), base ("rect" 몸 색 네모+외곽선 / "dot" 검은 점 / "none" 빈칸: 그림이 없을 때 시작 모습),
+   * bodyColor() (지금 몸 색), onSave(dataUrl, gridW, gridH).
    */
   PixelPainter.prototype.open = function (options) {
     this.options = options;
-    this.baseW = clamp(Math.round(options.width), 1, MAX_SIDE);
-    this.baseH = clamp(Math.round(options.height), 1, MAX_SIDE);
-    // 그림이 이미 있으면 그 크기(도트 그림)로, 아니면 1배
-    var scale = 1;
-    if (options.image && options.image.pixelArt) {
-      var natural = options.image.naturalWidth || options.image.width;
-      scale = [1, 2, 4].filter(function (s) { return s * this.baseW === natural; }, this)[0] || 1;
+    this.partW = Math.max(1, Math.round(options.width));
+    this.partH = Math.max(1, Math.round(options.height));
+    // 해상도: 정해 둔 값 → 도트 그림이면 그 그림 크기 → 부위 크기
+    var w = options.gridW, h = options.gridH;
+    if (!(w > 0 && h > 0) && options.image && options.image.pixelArt) {
+      w = options.image.naturalWidth || options.image.width;
+      h = options.image.naturalHeight || options.image.height;
     }
-    this.scale = scale;
-    this.w = this.baseW * scale;
-    this.h = this.baseH * scale;
-    while ((this.w > MAX_SIDE || this.h > MAX_SIDE) && this.scale > 1) {
-      this.scale /= 2;
-      this.w = this.baseW * this.scale;
-      this.h = this.baseH * this.scale;
+    if (!(w > 0 && h > 0)) {
+      w = this.partW;
+      h = this.partH;
     }
+    this.w = clamp(Math.round(w), 1, MAX_SIDE);
+    this.h = clamp(Math.round(h), 1, MAX_SIDE);
     this.data = options.image ? this.fromImage(options.image, this.w, this.h) : this.startShape(options.base);
     this.undoStack = [];
     this.redoStack = [];
     this.tool = "pen";
     document.getElementById("paint-title").textContent = options.title;
-    document.getElementById("paint-scale").value = String(this.scale);
-    Array.prototype.forEach.call(document.querySelectorAll("#paint-scale option"), function (option) {
-      var s = parseInt(option.value, 10);
-      option.disabled = this.baseW * s > MAX_SIDE || this.baseH * s > MAX_SIDE;
-    }, this);
     this.panel.hidden = false;
     this.refreshTools();
     this.draw();
@@ -182,12 +187,30 @@
     var url = out.toDataURL("image/png");
     this.close();
     if (this.options && this.options.onSave) {
-      this.options.onSave(url);
+      this.options.onSave(url, this.w, this.h);
     }
   };
 
-  /** 지금 그림(사진)을 칸에 옮긴다. 사진은 반투명을 없애서 또렷하게. */
+  /** 지금 그림(사진)을 칸에 옮긴다. 도트 그림은 칸을 그대로 골라 오고, 사진은 줄인 뒤 반투명을 없애서 또렷하게. */
   PixelPainter.prototype.fromImage = function (image, w, h) {
+    if (image.pixelArt) {
+      // 앱 안 웹 엔진은 늘리고 줄일 때 늘 뭉개서, 칸을 직접 골라 온다
+      var px = window.BitView.pixelsOf(image);
+      var copy = new Uint8ClampedArray(w * h * 4);
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var from = (Math.floor(y * px.h / h) * px.w + Math.floor(x * px.w / w)) * 4, to = (y * w + x) * 4;
+          var alpha = px.data[from + 3];
+          if (alpha === BODY_ALPHA || alpha >= 128) {
+            copy[to] = px.data[from];
+            copy[to + 1] = px.data[from + 1];
+            copy[to + 2] = px.data[from + 2];
+            copy[to + 3] = alpha === BODY_ALPHA ? BODY_ALPHA : 255;
+          }
+        }
+      }
+      return copy;
+    }
     var c = document.createElement("canvas");
     c.width = w;
     c.height = h;
@@ -212,7 +235,9 @@
 
   /** 그림이 없을 때 시작 모습: 몸 색 네모 + 검은 외곽선 / 검은 점 / 빈칸. */
   PixelPainter.prototype.startShape = function (base) {
-    var w = this.w, h = this.h, s = this.scale;
+    var w = this.w, h = this.h;
+    // 외곽선 두께: 부위 1px 이 몇 칸인지 (해상도를 키우면 외곽선도 그만큼 두껍게)
+    var s = Math.max(1, Math.round(Math.min(w / this.partW, h / this.partH)));
     var data = new Uint8ClampedArray(w * h * 4);
     for (var y = 0; y < h; y++) {
       for (var x = 0; x < w; x++) {
@@ -231,11 +256,12 @@
     return data;
   };
 
-  /** 칸 크기(1배·2배·4배)를 바꾼다: 지금 그림을 칸에 맞춰 늘리거나 줄인다. */
-  PixelPainter.prototype.setScale = function (scale) {
-    var w = this.baseW * scale, h = this.baseH * scale;
-    if (w > MAX_SIDE || h > MAX_SIDE || scale === this.scale) {
-      document.getElementById("paint-scale").value = String(this.scale);
+  /** 해상도(칸 수)를 바꾼다: 지금 그림을 새 칸에 맞춰 늘리거나 줄인다. */
+  PixelPainter.prototype.setResolution = function (w, h) {
+    w = clamp(Math.round(w), 1, MAX_SIDE);
+    h = clamp(Math.round(h), 1, MAX_SIDE);
+    if (w === this.w && h === this.h) {
+      this.refreshTools();
       return;
     }
     this.pushUndo();
@@ -251,25 +277,23 @@
         data[to + 3] = old[from + 3];
       }
     }
-    this.scale = scale;
     this.w = w;
     this.h = h;
     this.data = data;
+    this.refreshTools();
     this.draw();
   };
 
   // ---------------------------------------------------------------- 되돌리기
 
   PixelPainter.prototype.snapshot = function () {
-    return { w: this.w, h: this.h, scale: this.scale, data: new Uint8ClampedArray(this.data) };
+    return { w: this.w, h: this.h, data: new Uint8ClampedArray(this.data) };
   };
 
   PixelPainter.prototype.restoreSnapshot = function (snap) {
     this.w = snap.w;
     this.h = snap.h;
-    this.scale = snap.scale;
     this.data = snap.data;
-    document.getElementById("paint-scale").value = String(this.scale);
   };
 
   PixelPainter.prototype.pushUndo = function () {
@@ -359,7 +383,7 @@
     ctx.strokeStyle = "#26221e";
     ctx.lineWidth = 1;
     ctx.strokeRect(l.ox - 0.5, l.oy - 0.5, this.w * l.cell + 1, this.h * l.cell + 1);
-    document.getElementById("paint-size").textContent = this.w + "×" + this.h + "칸";
+    document.getElementById("paint-size").textContent = "부위 " + this.partW + "×" + this.partH + "px";
   };
 
   PixelPainter.prototype.cellAt = function (event) {
