@@ -122,24 +122,17 @@ public final class PartTimeline {
 		}
 
 		/**
-		 * 상황이 elapsedMs 만큼 지났을 때 부위의 사진 (사진 키가 없으면 null).
-		 * 지금 시간보다 앞선 마지막 사진 키를 따르고, 반복이면 처음 사진 키 전에는 앞 바퀴의 마지막 사진 키.
+		 * 상황이 elapsedMs 만큼 지났을 때 부위의 사진 (null = 원래 사진).
+		 * 지금 시간보다 앞선 마지막 사진 키를 따르고, 첫 사진 키 전에는 (반복이어도) 원래 사진.
+		 * 그래서 0.5초에만 사진 키를 넣어도 반복하면 원래 → 바꾼 사진 → 원래 … 로 번갈아 나온다.
 		 */
 		public Photo photoAt(String part, double elapsedMs) {
 			Key current = null;
-			Key last = null;
 			double t = loop ? elapsedMs % duration : Math.min(elapsedMs, duration);
 			for (Key key : track(part)) {
-				if (key.photo == null) {
-					continue;
-				}
-				last = key;
-				if (key.t <= t) {
+				if (key.photo != null && key.t <= t) {
 					current = key;
 				}
-			}
-			if (current == null) {
-				current = loop ? last : null;
 			}
 			return current == null ? null : new Photo(current.photo, current.flip);
 		}

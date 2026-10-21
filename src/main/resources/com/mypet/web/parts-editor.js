@@ -289,9 +289,6 @@
   };
 
   PartsEditor.prototype.restore = function (layout) {
-    if (this.tl) {
-      this.tl.drafts = {}; // 되돌리면 추가 안 한 변경도 버린다
-    }
     this.layout = window.BitView.copyLayout(layout);
     this.committed = window.BitView.copyLayout(layout);
     this.committedKey = canonical(this.committed);
@@ -479,7 +476,7 @@
 
     var subtitle = document.getElementById("parts-subtitle");
     if (advanced) {
-      subtitle.textContent = "시간을 고르고 비트 모습(자리·사진)을 바꾼 뒤 ◆ 추가를 누르면 그 장면이 저장돼요";
+      subtitle.textContent = "시간을 고르고 부위를 끌거나 돌리면 ◆ 키가 생겨요";
     } else if (shape) {
       subtitle.textContent = "끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전";
     } else if (always) {

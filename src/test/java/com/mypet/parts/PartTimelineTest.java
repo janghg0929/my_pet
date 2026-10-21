@@ -106,9 +106,11 @@ class PartTimelineTest {
 		assertEquals("vsign.png", idle.photoAt(PartLayout.LEFT_ARM, 39_000).name());
 		assertNull(idle.photoAt(PartLayout.RIGHT_ARM, 19_500)); // 사진 키가 없는 부위
 
-		// 반복이면 첫 사진 키 전에는 앞 바퀴의 마지막 사진, 한 번이면 원래대로(null)
+		// 첫 사진 키 전에는 반복이어도 원래 사진(null): 0.5초에만 넣어도 원래 ↔ 바꾼 사진이 번갈아
 		PartTimeline.Clip loop = clip(1_000, true, photoKey(500, "a.png"));
-		assertEquals("a.png", loop.photoAt(PartLayout.LEFT_ARM, 100).name());
+		assertNull(loop.photoAt(PartLayout.LEFT_ARM, 100));
+		assertEquals("a.png", loop.photoAt(PartLayout.LEFT_ARM, 700).name());
+		assertNull(loop.photoAt(PartLayout.LEFT_ARM, 1_200));
 		PartTimeline.Clip once = clip(1_000, false, photoKey(500, "a.png"));
 		assertNull(once.photoAt(PartLayout.LEFT_ARM, 100));
 		assertEquals("a.png", once.photoAt(PartLayout.LEFT_ARM, 5_000).name());

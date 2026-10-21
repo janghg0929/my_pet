@@ -129,24 +129,20 @@
     return mixKeys(last, last, 0);
   }
 
-  /** 클립이 elapsedMs 만큼 지났을 때 부위 사진 {name, flip} (사진 키가 없으면 null) — PartTimeline.Clip.photoAt. */
+  /**
+   * 클립이 elapsedMs 만큼 지났을 때 부위 사진 {name, flip} (null = 원래 사진) — PartTimeline.Clip.photoAt.
+   * 앞선 마지막 사진 키를 따르고, 첫 사진 키 전에는 (반복이어도) 원래 사진.
+   */
   function clipPhotoAt(clip, part, elapsedMs) {
     var keys = (clip && clip.tracks[part]) || [];
     var d = clip ? clip.duration : 1;
     var t = clip && clip.loop ? elapsedMs % d : Math.min(elapsedMs, d);
-    var current = null, last = null;
+    var current = null;
     keys.forEach(function (k) {
-      if (!k.photo) {
-        return;
-      }
-      last = k;
-      if (k.t <= t) {
+      if (k.photo && k.t <= t) {
         current = k;
       }
     });
-    if (!current && clip && clip.loop) {
-      current = last;
-    }
     return current ? { name: current.photo, flip: !!current.flip } : null;
   }
 
