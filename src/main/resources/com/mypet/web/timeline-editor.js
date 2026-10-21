@@ -59,12 +59,21 @@
       self.commit(0);
     });
     document.getElementById("tl-delete").addEventListener("click", function () { self.deleteKeyAtPlayhead(); });
-    // 사진: 고른 부위에 넣기/빼기 (눈은 고른 상황의 표정 사진)
+    // 사진 넣기/빼기: 지금 시간의 키에 사진을 넣고 뺀다 (시간 막대에 저장, 부위의 원래 사진은 일반 탭에서)
     document.getElementById("tl-photo").addEventListener("click", function () {
-      self.send("pickPartImage", self.selected, self.timelineExpression());
+      self.tl.pendingPhoto = { state: self.tl.state, part: self.selected, t: self.tl.playhead };
+      self.send("pickKeyImage");
     });
     document.getElementById("tl-photo-remove").addEventListener("click", function () {
-      self.send("removePartImage", self.selected, self.timelineExpression());
+      var key = self.keyAtPlayhead(self.selected);
+      if (key && key.photo) {
+        key.photo = null;
+        key.flip = false;
+        self.afterChange(self.selected);
+        self.refreshControls();
+        self.draw();
+        self.commit(0);
+      }
     });
 
     FIELDS.forEach(function (field) {
@@ -203,16 +212,6 @@
       });
     });
     return names;
-  };
-
-  /** 고른 상황의 눈 표정 (공중 = 떨어질 때, 잡힐 때 = 잡혔을 때, 나머지 = 평소). */
-  P.timelineExpression = function () {
-    return this.tl.state === "air" ? "fall" : (this.tl.state === "grab" ? "grab" : "neutral");
-  };
-
-  P.timelineHasImage = function () {
-    var part = this.part();
-    return this.selected === "eyes" ? !!(part.images && part.images[this.timelineExpression()]) : !!part.image;
   };
 
   /** 지금 고른 상황의 클립. */
@@ -420,13 +419,11 @@
       });
       keyPhoto.value = key && key.photo ? key.photo : "";
     }
-    var hasImage = this.timelineHasImage();
+    var keyHasPhoto = !!(key && key.photo);
     var photo = document.getElementById("tl-photo");
-    photo.textContent = hasImage ? "사진 바꾸기" : "사진 넣기";
-    photo.title = this.selected === "eyes"
-      ? "눈 사진 (" + { neutral: "평소", grab: "잡혔을 때", fall: "떨어질 때" }[this.timelineExpression()] + " 표정)"
-      : ROW_LABELS[this.selected] + " 사진";
-    document.getElementById("tl-photo-remove").disabled = !hasImage;
+    photo.textContent = keyHasPhoto ? "사진 바꾸기" : "사진 넣기";
+    photo.title = (tl.playhead / 1000).toFixed(2) + "초부터 " + ROW_LABELS[this.selected] + " 사진 바꾸기 (키에 저장)";
+    document.getElementById("tl-photo-remove").disabled = !keyHasPhoto;
     var ease = document.getElementById("tl-ease");
     ease.checked = key ? key.ease : true;
     ease.disabled = !key;

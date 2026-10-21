@@ -364,9 +364,9 @@ class WebSettingsPreviewTest {
 			+ " + document.getElementById('tl-photo-remove').disabled + ' / transport fits=' + (document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)"));
 		assertTrue(evalScript(settings[0], "String(document.querySelector('.tl-transport').scrollWidth <= document.querySelector('.tl-transport').clientWidth)").equals("true"),
 			"고급 줄에 사진 버튼까지 한 줄에 들어가야 함");
-		// 키 사진: 0.6초에 "새 사진…" → (가짜) 고른 사진이 그 키에 들어가고, 이어서를 켠다
+		// 키 사진: 0.6초에서 [사진 넣기] → (가짜) 고른 사진이 그 시간의 키에 저장되고, 이어서를 켠다
 		runScript(settings[0], "var ed = window.bitPartsEditor; ed.tl.playhead = 600; ed.refreshControls();"
-			+ " var sel = document.getElementById('tl-key-photo'); sel.value = '@pick'; sel.dispatchEvent(new Event('change'));"
+			+ " document.getElementById('tl-photo').click();"
 			+ " document.getElementById('tl-continue').click();");
 		Thread.sleep(800);
 		com.mypet.parts.PartTimeline.Clip photoClip = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()))
@@ -377,6 +377,14 @@ class WebSettingsPreviewTest {
 			+ " | select shows " + evalScript(settings[0], "document.getElementById('tl-key-photo').selectedOptions[0].textContent"));
 		assertTrue(photoAt != null && "vsign.png".equals(photoAt.name()) && mirroredPhoto.flip() && !photoClip.restart, "키 사진 / 이어서");
 		snapshot(settings[0], new File(out, "web-parts-keyphoto.png"));
+		System.out.println("photo buttons at key: " + evalScript(settings[0], "document.getElementById('tl-photo').textContent + ' / remove disabled=' + document.getElementById('tl-photo-remove').disabled"));
+		// [사진 빼기]: 그 키의 사진을 뺀다
+		runScript(settings[0], "document.getElementById('tl-photo-remove').click()");
+		Thread.sleep(500);
+		com.mypet.parts.PartTimeline.Photo afterRemove = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()))
+			.timeline.clips.get("air").photoAt("leftArm", 700);
+		System.out.println("after photo remove: " + afterRemove);
+		assertTrue(afterRemove == null, "사진 빼기로 키 사진이 빠져야 함");
 
 		// 시간 막대 휠 확대: 0.4초 근처에서 세 번 굴리면 1.25³ 배 (보이는 구간 0.8초 → 약 0.41초)
 		runScript(settings[0], "var c = document.getElementById('tl-canvas'); var b = c.getBoundingClientRect();"
