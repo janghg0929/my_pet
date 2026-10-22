@@ -38,7 +38,13 @@ class WebSettingsPreviewTest {
 		java.util.concurrent.atomic.AtomicReference<String> sentParts = new java.util.concurrent.atomic.AtomicReference<>();
 		java.util.concurrent.atomic.AtomicReference<String> askedText = new java.util.concurrent.atomic.AtomicReference<>();
 		java.util.concurrent.atomic.AtomicReference<String> drawnImage = new java.util.concurrent.atomic.AtomicReference<>();
+		java.util.concurrent.atomic.AtomicBoolean shortcutAsked = new java.util.concurrent.atomic.AtomicBoolean();
 		SettingsHost host = new SettingsHost() {
+			@Override
+			public void createDesktopShortcut() {
+				shortcutAsked.set(true);
+			}
+
 			@Override
 			public String settingsStateJson() {
 				return STATE;
@@ -151,6 +157,19 @@ class WebSettingsPreviewTest {
 		System.out.println("font check (healing vs monospace): " + fontCheck);
 		String[] widths = fontCheck.split(" ");
 		assertTrue(!widths[0].equals(widths[1]) && !widths[4].equals(widths[5]), "달서힐링체가 쓰여야 함: " + fontCheck);
+		// [바로가기 만들기]: 윈도우 설치본(canShortcut)일 때만 보이고, 누르면 Java 에 부탁, 알림 줄에 결과
+		String hiddenAtFirst = evalScript(settings[0], "String(document.getElementById('desktop-shortcut').hidden)");
+		runScript(settings[0], ""
+			+ " window.bitUpdate(Object.assign(" + STATE + ", { canShortcut: true, status: '바탕 화면에 MY_PET 바로가기를 만들었어요' }));");
+		Thread.sleep(300);
+		String shownInfo = evalScript(settings[0], "String(document.getElementById('desktop-shortcut').hidden) + '|' + document.getElementById('main-status').textContent");
+		snapshot(settings[0], new File(out, "web-main-shortcut.png"));
+		runScript(settings[0], "document.getElementById('desktop-shortcut').click()");
+		Thread.sleep(300);
+		System.out.println("desktop shortcut button: hidden at first=" + hiddenAtFirst + " shown=" + shownInfo + " asked=" + shortcutAsked.get());
+		assertTrue("true".equals(hiddenAtFirst) && shownInfo.startsWith("false|바탕 화면에") && shortcutAsked.get(), "바로가기 만들기 버튼: " + shownInfo);
+		runScript(settings[0], "document.getElementById('main-status').textContent = ''; window.bitUpdate(" + STATE + ");");
+		Thread.sleep(300);
 		// 사용자가 창을 옮긴 것처럼 위치를 바꿔 두고, 화면을 바꿔도 그 자리를 지키는지 본다
 		java.awt.Point moved = new java.awt.Point(-3500, -3600);
 		SwingUtilities.invokeAndWait(() -> settings[0].dialog().setLocation(moved));

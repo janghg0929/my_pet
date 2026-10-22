@@ -37,6 +37,10 @@ public interface SettingsHost {
 	/** 모습 꾸미기: 기본 비트로 되돌리기. */
 	void resetParts();
 
+	/** 바탕 화면에 MY_PET 바로가기 만들기 (윈도우 설치본). 결과는 설정 화면의 알림 줄로. */
+	default void createDesktopShortcut() {
+	}
+
 	/** 부위 사진을 설정 화면에 보낼 data URL (없으면 null). */
 	String partImageDataUrl(String fileName);
 

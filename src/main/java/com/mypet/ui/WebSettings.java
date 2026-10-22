@@ -415,6 +415,10 @@ public final class WebSettings implements SettingsHost.View {
 			SwingUtilities.invokeLater(host::quit);
 		}
 
+		public void desktopShortcut() {
+			SwingUtilities.invokeLater(host::createDesktopShortcut);
+		}
+
 		public void searchBox(Object x, Object y, Object width, Object height, Object visible, Object accent) {
 			if (x instanceof Number nx && y instanceof Number ny && width instanceof Number nw && height instanceof Number nh) {
 				boolean show = Boolean.TRUE.equals(visible);

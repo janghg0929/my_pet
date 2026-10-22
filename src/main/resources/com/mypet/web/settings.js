@@ -540,6 +540,7 @@
     root.setProperty("--pet-light", lighten(state.petColor));
 
     window.BitView.setText(document.getElementById("version"), "v" + state.version);
+    document.getElementById("desktop-shortcut").hidden = !state.canShortcut;
     window.BitView.setText(document.getElementById("hex"), state.baseColor.toUpperCase());
     var layout = currentLayout();
     requestImages(layout);
@@ -563,7 +564,7 @@
     renderLooks();
 
     if (state.status) {
-      var STATUS = { color: "color-status", parts: "parts-status", looks: "looks-status" };
+      var STATUS = { main: "main-status", color: "color-status", parts: "parts-status", looks: "looks-status" };
       var target = STATUS[currentView] || "appearance-status";
       document.getElementById(target).textContent = state.status;
     }

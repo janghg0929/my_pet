@@ -34,6 +34,12 @@
       <span class="menu-title">모습 꾸미기</span>
       <span class="menu-desc">팔·다리·눈 바꾸기</span>
     </button>
+    <!-- 윈도우 설치본에서만 보인다 (settings.js 가 state.canShortcut 으로) -->
+    <button class="menu-row" id="desktop-shortcut" data-action="desktopShortcut" hidden>
+      <span class="menu-title">바로가기 만들기</span>
+      <span class="menu-desc">바탕 화면에 MY_PET</span>
+    </button>
+    <p class="status" id="main-status"></p>
     <footer class="footer">
       <span class="version" id="version">v-</span>
       <span class="footer-buttons">

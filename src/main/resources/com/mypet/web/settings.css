@@ -1096,6 +1096,14 @@ input[type="number"] {
 }
 
 /* ---------- 상태 표시 ---------- */
+#main-status:empty {
+  display: none; /* 메인 화면은 알릴 말이 있을 때만 자리를 차지한다 */
+}
+
+#main-status {
+  margin: 0 0 10px;
+}
+
 .status {
   margin: 14px 0 0;
   color: var(--muted);

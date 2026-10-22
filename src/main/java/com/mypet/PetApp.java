@@ -708,6 +708,23 @@ final class PetApp implements SettingsHost {
 
 	// ---------------------------------------------------------------- HTML 설정 창 (SettingsHost)
 
+	@Override
+	public void createDesktopShortcut() {
+		refreshWebSettings("바로가기를 만드는 중이에요...");
+		Thread thread = new Thread(() -> {
+			Shortcuts.Result result = Shortcuts.createDesktop(Constants.appDataDir());
+			String message = switch (result) {
+				case CREATED -> "바탕 화면에 MY_PET 바로가기를 만들었어요";
+				case EXISTS -> "바탕 화면에 MY_PET 바로가기가 이미 있어요";
+				case NOT_INSTALLED -> "설치된 비트가 없어서 바로가기를 만들 수 없어요";
+				case FAILED -> "바로가기를 만들지 못했어요";
+			};
+			SwingUtilities.invokeLater(() -> refreshWebSettings(message));
+		}, "mypet-desktop-shortcut");
+		thread.setDaemon(true);
+		thread.start();
+	}
+
 	/** HTML 설정 창이 열려 있으면 화면을 다시 그린다. */
 	private void refreshWebSettings(String status) {
 		webStatus = status;
@@ -721,6 +738,7 @@ final class PetApp implements SettingsHost {
 		return "{"
 			+ "\"version\":" + jsonString(UpdateService.currentVersion()) + ","
 			+ "\"isMac\":" + IS_MACOS + ","
+			+ "\"canShortcut\":" + (Shortcuts.installedExe(Constants.appDataDir()) != null) + ","
 			+ "\"petColor\":" + jsonString(currentCharacterColor) + ","
 			+ "\"baseColor\":" + jsonString(baseCharacterColor) + ","
 			+ "\"status\":" + jsonString(webStatus) + ","
