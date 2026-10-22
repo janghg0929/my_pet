@@ -23,6 +23,7 @@ $output = Join-Path $release 'MyPet-Setup.exe'
     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll `
     /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll `
     "/resource:$Package,MyPet-windows-x64.zip" `
+    "/resource:$(Join-Path $root 'packaging\MyPet.ico'),MyPet.ico" `
     "/win32icon:$(Join-Path $root 'packaging\MyPet.ico')" `
     "/out:$output" (Join-Path $root 'launcher\MyPetSetup.cs')
 if ($LASTEXITCODE -ne 0) { throw "설치 프로그램 빌드 실패" }

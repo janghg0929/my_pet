@@ -37,6 +37,9 @@ static class MyPetSetup
     const string ShortcutArg = "--shortcut";
     /** 바로가기(.lnk) 이름: 시작 메뉴·바탕 화면 모두 "MY_PET" (Java 의 Shortcuts.NAME 과 같다). */
     const string ShortcutName = "MY_PET.lnk";
+    /** 바로가기 아이콘: 설치 폴더에 꺼내 두는 파일 이름 (Java 의 Shortcuts.ICON_FILE 과 같다)과 이 exe 안의 리소스 이름. */
+    const string IconFile = "MyPet-icon.ico";
+    const string IconResource = "MyPet.ico";
 
     static readonly Color Paper = Color.FromArgb(0xFB, 0xF6, 0xEC);
     static readonly Color Muted = Color.FromArgb(0x7D, 0x74, 0x68);
@@ -252,7 +255,51 @@ static class MyPetSetup
 
     // ---------------------------------------------------------------- 바로가기, 실행
 
-    /** WScript.Shell 로 바로가기를 만든다 (설치된 MyPet.exe --shortcut, 아이콘도 그 exe). 실패하면 false. */
+    /**
+     * 바로가기 아이콘을 설치 폴더에 꺼내 둔다 (이 exe 에 리소스로 들어 있다). 꺼낸 경로, 못 하면 exe.
+     * exe 를 아이콘으로 쓰면 윈도우가 예전(자바) 아이콘을 같은 경로로 기억해 두고 계속 보여 줘서 따로 둔다.
+     */
+    static string WriteIcon(string home)
+    {
+        string icon = Path.Combine(home, IconFile);
+        try
+        {
+            using (Stream stream = Assembly.GetExecutingAssembly().GetManifestResourceStream(IconResource))
+            {
+                if (stream == null)
+                {
+                    return Path.Combine(home, "MyPet.exe");
+                }
+                using (FileStream file = File.Create(icon))
+                {
+                    stream.CopyTo(file);
+                }
+            }
+            return icon;
+        }
+        catch (Exception)
+        {
+            return File.Exists(icon) ? icon : Path.Combine(home, "MyPet.exe");
+        }
+    }
+
+    [DllImport("shell32.dll")]
+    static extern void SHChangeNotify(int eventId, int flags, IntPtr item1, IntPtr item2);
+
+    /** 탐색기에 아이콘이 바뀌었다고 알린다 (바탕 화면 아이콘을 다시 그리게). */
+    static void RefreshIcons()
+    {
+        try
+        {
+            SHChangeNotify(0x08000000, 0, IntPtr.Zero, IntPtr.Zero); // SHCNE_ASSOCCHANGED, SHCNF_IDLIST
+        }
+        catch (Exception)
+        {
+            // 못 알려도 다음에 다시 그릴 때 바뀐다
+        }
+    }
+
+    /** WScript.Shell 로 바로가기를 만든다 (설치된 MyPet.exe --shortcut, 아이콘은 MyPet-icon.ico). 실패하면 false. */
     static bool CreateShortcut(string folder, string home)
     {
         object shell = null;
@@ -273,7 +320,7 @@ static class MyPetSetup
             linkType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, link, new object[] { target });
             linkType.InvokeMember("Arguments", BindingFlags.SetProperty, null, link, new object[] { ShortcutArg });
             linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link, new object[] { home });
-            linkType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, link, new object[] { target + ",0" });
+            linkType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, link, new object[] { WriteIcon(home) + ",0" });
             linkType.InvokeMember("Description", BindingFlags.SetProperty, null, link, new object[] { "데스크톱 펫 비트" });
             linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
             return true;
@@ -438,10 +485,11 @@ static class MyPetSetup
                 case Stage.Current:
                     // 바로가기가 없어졌으면 다시 만든다 (시작 메뉴는 늘, 바탕 화면은 고르면)
                     CreateShortcut(StartMenuFolder(), home);
-                    if (desktopShortcut.Checked && !File.Exists(Path.Combine(DesktopFolder(), ShortcutName)))
+                    if (desktopShortcut.Checked || File.Exists(Path.Combine(DesktopFolder(), ShortcutName)))
                     {
-                        CreateShortcut(DesktopFolder(), home);
+                        CreateShortcut(DesktopFolder(), home); // 있던 것도 아이콘·표시를 고쳐 쓴다
                     }
+                    RefreshIcons();
                     StartAndClose();
                     break;
                 case Stage.Done:
@@ -517,6 +565,7 @@ static class MyPetSetup
                 // 바로가기는 못 만들어도 설치는 된 것
                 bool menu = CreateShortcut(StartMenuFolder(), home);
                 bool onDesktop = desktop && CreateShortcut(DesktopFolder(), home);
+                RefreshIcons();
                 BeginInvoke((MethodInvoker)delegate { ShowDone(menu, onDesktop); });
             }
             catch (Exception e)

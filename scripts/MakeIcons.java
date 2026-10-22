@@ -1,6 +1,6 @@
 // 앱 아이콘 만들기: 하얀 타일 위로 살짝 기울어져 떨어지는 비트 (팔을 들고 > < 눈).
 // 사용법 (프로젝트 폴더에서): java scripts/MakeIcons.java
-// 결과: src/main/resources/com/mypet/icons/icon-<크기>.png (창 아이콘),
+// 결과: src/main/resources/com/mypet/icons/icon-<크기>.png (창 아이콘), MyPet.ico (바로가기 아이콘),
 //       packaging/MyPet.ico (윈도우 실행 파일), packaging/MyPet.icns (맥 앱)
 // 크기마다 벡터로 다시 그려서 작은 아이콘도 또렷하다 (32px 이하는 그림자·속도선을 빼서 단순하게).
 
@@ -50,6 +50,8 @@ public class MakeIcons {
 			ico.put(size, png(render(size)));
 		}
 		Files.write(packaging.resolve("MyPet.ico"), ico(ico));
+		// 바로가기 아이콘용으로 앱 안에도 (Shortcuts 가 설치 폴더에 MyPet-icon.ico 로 꺼내 쓴다)
+		Files.write(icons.resolve("MyPet.ico"), ico(ico));
 
 		// 맥 .icns: 형식 이름 → 크기 (모두 PNG)
 		Map<String, Integer> icnsTypes = new LinkedHashMap<>();
