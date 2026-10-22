@@ -1,7 +1,8 @@
 // MY_PET 윈도우 실행기 (MyPet.exe 하나만 받으면 되게).
 //
 // 이 exe 안에 비트 프로그램(MyPet-windows-x64.zip: 실행 파일 + app + runtime)이 통째로 들어 있다.
-// - 처음 실행: 안에 든 프로그램을 %LOCALAPPDATA%\MyPet 에 풀어서 설치하고 실행한다 (인터넷 필요 없음).
+// - 처음 실행: [설치] 를 누르면 안에 든 프로그램을 %LOCALAPPDATA%\MyPet 에 풀어서 설치하고 실행한다 (인터넷 필요 없음).
+//   시작 메뉴에는 늘, 바탕 화면에는 "바탕 화면에 바로가기 추가" 를 골랐을 때 MY_PET 바로가기를 만든다.
 // - 그다음부터: 설치된 %LOCALAPPDATA%\MyPet\MyPet.exe 를 바로 실행한다.
 // - 이 exe 에 든 버전이 설치된 버전보다 새로우면 프로그램을 다시 풀어서 바꾼다 (settings.json 등은 그대로).
 // 평소 앱 업데이트(MyPet.jar)는 설치된 앱이 스스로 한다.
@@ -16,6 +17,7 @@ using System.Drawing;
 using System.IO;
 using System.IO.Compression;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
@@ -61,7 +63,8 @@ static class MyPetLauncher
             }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            InstallForm form = new InstallForm(home, installed != null);
+            // 처음 설치할 때만 바로가기를 고르고 [설치] 를 누르게 한다 (새 버전으로 바꿀 때와 --install-only 는 바로)
+            InstallForm form = new InstallForm(home, installed != null, installed == null && !installOnly);
             Application.Run(form);
             if (!form.Succeeded)
             {
@@ -190,23 +193,66 @@ static class MyPetLauncher
         return string.Join(" ", quoted);
     }
 
-    /** "비트를 설치하는 중" 진행 창. exe 안의 zip 을 풀고 닫힌다. */
+    /** 바로가기(.lnk) 이름: 시작 메뉴·바탕 화면 모두 "MY_PET" (Java 의 Shortcuts.NAME 과 같다). */
+    const string ShortcutName = "MY_PET.lnk";
+
+    /** WScript.Shell 로 바로가기를 만든다 (설치된 MyPet.exe 를 실행, 아이콘도 그 exe). 실패하면 false. */
+    static bool CreateShortcut(string folder, string home)
+    {
+        object shell = null;
+        object link = null;
+        try
+        {
+            if (string.IsNullOrEmpty(folder))
+            {
+                return false;
+            }
+            Directory.CreateDirectory(folder);
+            string target = Path.Combine(home, "MyPet.exe");
+            Type type = Type.GetTypeFromProgID("WScript.Shell");
+            shell = Activator.CreateInstance(type);
+            link = type.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell,
+                new object[] { Path.Combine(folder, ShortcutName) });
+            Type linkType = link.GetType();
+            linkType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, link, new object[] { target });
+            linkType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, link, new object[] { home });
+            linkType.InvokeMember("IconLocation", BindingFlags.SetProperty, null, link, new object[] { target + ",0" });
+            linkType.InvokeMember("Description", BindingFlags.SetProperty, null, link, new object[] { "데스크톱 펫 비트" });
+            linkType.InvokeMember("Save", BindingFlags.InvokeMethod, null, link, null);
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        finally
+        {
+            if (link != null) { Marshal.ReleaseComObject(link); }
+            if (shell != null) { Marshal.ReleaseComObject(shell); }
+        }
+    }
+
+    /** 설치 창: 처음 설치면 바로가기를 고르고 [설치], 새 버전이면 바로 진행. exe 안의 zip 을 풀고 닫힌다. */
     sealed class InstallForm : Form
     {
         readonly string home;
         readonly Label message;
         readonly ProgressBar bar;
+        readonly CheckBox desktopShortcut;
+        readonly Button install;
+        readonly bool ask;
         public bool Succeeded;
 
-        public InstallForm(string home, bool upgrade)
+        public InstallForm(string home, bool upgrade, bool ask)
         {
             this.home = home;
+            this.ask = ask;
             Text = "MY_PET 설치";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterScreen;
-            ClientSize = new Size(380, 110);
+            ClientSize = new Size(380, ask ? 150 : 110);
             BackColor = Color.FromArgb(0xFB, 0xF6, 0xEC);
             Font = new Font("Malgun Gothic", 9.5f);
             TopMost = true;
@@ -220,7 +266,8 @@ static class MyPetLauncher
             }
 
             message = new Label();
-            message.Text = upgrade ? "비트를 새 버전으로 바꾸는 중이에요..." : "비트를 처음 설치하는 중이에요... (한 번만 해요)";
+            message.Text = ask ? "비트를 설치할게요. (한 번만 해요)"
+                : (upgrade ? "비트를 새 버전으로 바꾸는 중이에요..." : "비트를 처음 설치하는 중이에요... (한 번만 해요)");
             message.SetBounds(18, 18, 344, 22);
             Controls.Add(message);
 
@@ -228,7 +275,16 @@ static class MyPetLauncher
             bar.SetBounds(18, 50, 344, 20);
             bar.Minimum = 0;
             bar.Maximum = 100;
+            bar.Visible = !ask;
             Controls.Add(bar);
+
+            // 처음 설치: 바탕 화면 바로가기를 고른다 (시작 메뉴에는 늘 만든다)
+            desktopShortcut = new CheckBox();
+            desktopShortcut.Text = "바탕 화면에 바로가기 추가";
+            desktopShortcut.Checked = true;
+            desktopShortcut.SetBounds(18, 46, 344, 24);
+            desktopShortcut.Visible = ask;
+            Controls.Add(desktopShortcut);
 
             Label where = new Label();
             where.Text = "설치 위치: " + home;
@@ -236,11 +292,37 @@ static class MyPetLauncher
             where.Font = new Font("Malgun Gothic", 8f);
             where.SetBounds(18, 80, 344, 20);
             Controls.Add(where);
+
+            install = new Button();
+            install.Text = "설치";
+            install.SetBounds(272, 108, 90, 30);
+            install.BackColor = Color.FromArgb(0x4F, 0xC3, 0xF7);
+            install.FlatStyle = FlatStyle.Flat;
+            install.Visible = ask;
+            install.Click += delegate { StartInstall(); };
+            Controls.Add(install);
+            if (ask)
+            {
+                AcceptButton = install;
+            }
         }
 
         protected override void OnShown(EventArgs e)
         {
             base.OnShown(e);
+            if (!ask)
+            {
+                StartInstall();
+            }
+        }
+
+        void StartInstall()
+        {
+            install.Enabled = false;
+            desktopShortcut.Enabled = false;
+            desktopShortcut.Visible = false;
+            bar.Visible = true;
+            message.Text = "비트를 설치하는 중이에요...";
             Thread worker = new Thread(Run);
             worker.IsBackground = true;
             worker.Start();
@@ -267,6 +349,15 @@ static class MyPetLauncher
                 if (!IsInstalled(home))
                 {
                     throw new InvalidDataException("설치한 폴더에 비트 프로그램이 없어요.");
+                }
+                if (ask)
+                {
+                    // 바로가기는 못 만들어도 설치는 된 것 (비트는 그대로 켠다)
+                    CreateShortcut(Environment.GetFolderPath(Environment.SpecialFolder.Programs), home);
+                    if (desktopShortcut.Checked)
+                    {
+                        CreateShortcut(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), home);
+                    }
                 }
                 Succeeded = true;
                 BeginInvoke((MethodInvoker)Close);

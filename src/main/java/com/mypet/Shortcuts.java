@@ -8,16 +8,15 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * 윈도우 바로가기: 바탕 화면과 시작 메뉴에 "MY_PET" 바로가기를 만든다 (설치된 %LOCALAPPDATA%\MyPet\MyPet.exe 를 실행).
- * 한 번만 만든다 (표시 파일): 사용자가 바로가기를 지우면 다시 만들지 않는다.
- * 새로 설치한 사람도, 자동 업데이트(jar)로 이 버전이 된 사람도 처음 실행 때 생긴다.
+ * 윈도우 시작 메뉴 바로가기: "MY_PET" (설치된 %LOCALAPPDATA%\MyPet\MyPet.exe 를 실행).
+ * 자동 업데이트(jar)로 이 버전이 된 사람도 시작 메뉴에서 켤 수 있게, 처음 실행 때 한 번만 만든다 (표시 파일).
+ * 바탕 화면 바로가기는 처음 설치할 때 설치 창(MyPetLauncher.cs)에서 고른 사람만 만든다.
  */
 public final class Shortcuts {
 	public static final String NAME = "MY_PET";
 	static final String MARKER = "shortcuts-created";
-	/** 바탕 화면(OneDrive 로 옮긴 곳 포함)과 시작 메뉴 프로그램 폴더 (PowerShell 식). */
-	static final List<String> DEFAULT_FOLDERS =
-		List.of("[Environment]::GetFolderPath('Desktop')", "[Environment]::GetFolderPath('Programs')");
+	/** 시작 메뉴 프로그램 폴더 (PowerShell 식). */
+	static final List<String> DEFAULT_FOLDERS = List.of("[Environment]::GetFolderPath('Programs')");
 
 	private Shortcuts() {
 	}
@@ -35,7 +34,7 @@ public final class Shortcuts {
 		Thread thread = new Thread(() -> {
 			if (run(script(exe, home, DEFAULT_FOLDERS))) {
 				try {
-					Files.writeString(marker, "바탕 화면·시작 메뉴 바로가기를 만들었어요. 지워도 다시 만들지 않아요.\n", StandardCharsets.UTF_8);
+					Files.writeString(marker, "시작 메뉴 바로가기를 만들었어요. 지워도 다시 만들지 않아요.\n", StandardCharsets.UTF_8);
 				} catch (java.io.IOException e) {
 					System.err.println("[MY_PET] 바로가기 표시 파일 저장 실패: " + e);
 				}
