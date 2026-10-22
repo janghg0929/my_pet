@@ -6,6 +6,7 @@
 // - 설치 안 됨: [설치]
 // - 이 exe 에 든 버전이 더 새로움: [업데이트] (settings.json, 꾸민 모습 등은 그대로)
 // - 이미 같은(또는 더 새) 버전: [다시 설치] / [비트 켜기]
+// - 설치되어 있으면 [삭제]: 프로그램과 바로가기를 지운다 (설정·꾸민 모습은 고르면 함께)
 // 평소 앱 업데이트(MyPet.jar)는 설치된 앱이 스스로 한다.
 //
 // 바로가기와 이 프로그램은 비트를 켤 때 --shortcut 을 붙인다. 예전 MyPet.exe(받은 파일이 곧 실행기였던 2.1.2 까지)는
@@ -14,6 +15,7 @@
 // 자바 없이 돌아야 해서 윈도우에 기본으로 들어 있는 .NET Framework 4 로 만든다 (C# 5 문법만 사용).
 // 빌드: scripts\build-launcher.ps1 (zip 을 리소스로 넣는다)
 // 개발/시험용: MyPet-Setup.exe --install-only (창 없이 설치만, 바로가기·실행 없음)
+//             MyPet-Setup.exe --uninstall-only [--remove-data] (창 없이 삭제만)
 
 using System;
 using System.Diagnostics;
@@ -72,6 +74,12 @@ static class MyPetSetup
                 Extract(home, null);
             }
             return IsInstalled(home) ? 0 : 1;
+        }
+        if (Array.IndexOf(args, "--uninstall-only") >= 0)
+        {
+            // 시험용: 창 없이 삭제만 (--remove-data 면 설정까지)
+            Uninstall(home, Array.IndexOf(args, "--remove-data") >= 0);
+            return IsInstalled(home) ? 1 : 0;
         }
 
         Application.EnableVisualStyles();
@@ -364,29 +372,107 @@ static class MyPetSetup
         }
     }
 
+    // ---------------------------------------------------------------- 삭제
+
+    /** 바로가기가 이 설치본을 가리키는지 (다른 프로그램의 같은 이름 바로가기는 지우지 않게). */
+    static bool PointsToInstall(string link, string home)
+    {
+        object shell = null;
+        object shortcut = null;
+        try
+        {
+            Type type = Type.GetTypeFromProgID("WScript.Shell");
+            shell = Activator.CreateInstance(type);
+            shortcut = type.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod, null, shell, new object[] { link });
+            string target = (string)shortcut.GetType().InvokeMember("TargetPath", BindingFlags.GetProperty, null, shortcut, null);
+            return string.Equals(Path.GetFullPath(target), Path.GetFullPath(Path.Combine(home, "MyPet.exe")), StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+        finally
+        {
+            if (shortcut != null) { Marshal.ReleaseComObject(shortcut); }
+            if (shell != null) { Marshal.ReleaseComObject(shell); }
+        }
+    }
+
+    /**
+     * 비트를 지운다: 바탕 화면·시작 메뉴 바로가기와 프로그램 파일.
+     * removeData 가 아니면 settings.json 과 꾸민 모습 사진(parts)은 남겨서, 다시 설치하면 그대로 돌아온다.
+     */
+    static void Uninstall(string home, bool removeData)
+    {
+        foreach (string folder in new string[] { DesktopFolder(), StartMenuFolder() })
+        {
+            if (string.IsNullOrEmpty(folder))
+            {
+                continue;
+            }
+            string link = Path.Combine(folder, ShortcutName);
+            if (File.Exists(link) && PointsToInstall(link, home))
+            {
+                File.Delete(link);
+            }
+        }
+        if (removeData)
+        {
+            if (Directory.Exists(home))
+            {
+                Directory.Delete(home, true);
+            }
+        }
+        else
+        {
+            RemoveOldProgram(home);
+            string app = Path.Combine(home, "app");
+            if (Directory.Exists(app))
+            {
+                Directory.Delete(app, true); // 자동 업데이트로 받은 jar 도
+            }
+            foreach (string name in new string[] { IconFile, "my_pet.lock", "shortcut-icons", "start-menu-shortcut", "shortcuts-created" })
+            {
+                DeleteIfExists(Path.Combine(home, name));
+            }
+        }
+        RefreshIcons();
+    }
+
     // ---------------------------------------------------------------- 설치 창
 
 
     /** 설치 창의 단계. */
-    enum Stage { Fresh, Upgrade, Current, Installing, Done }
+    enum Stage { Fresh, Upgrade, Current, Installing, Done, ConfirmRemove, Removing, Removed }
 
-    /** 설치 창: 고르기 → 설치 중(진행 막대) → 끝 (어디서 켜는지 안내 + [비트 켜기]). */
+    /**
+     * 설치 창: 고르기 → 설치 중(진행 막대) → 끝 (어디서 켜는지 안내 + [비트 켜기]).
+     * 이미 설치되어 있으면 [삭제] 도 있다: 삭제할까요? (설정도 지울지 고르기) → 지우는 중 → 지웠어요.
+     */
     sealed class SetupForm : Form
     {
         readonly string home;
+        readonly Version installed;
+        readonly Version packaged;
         readonly Label title;
         readonly Label detail;
         readonly CheckBox desktopShortcut;
+        readonly CheckBox removeData;
         readonly ProgressBar bar;
         readonly Button primary;
         readonly Button secondary;
+        readonly Button remove;
         Stage stage;
+        /** 삭제를 취소하면 돌아갈 단계. */
+        Stage choice;
 
         public SetupForm(string home, Version installed, Version packaged)
         {
             this.home = home;
+            this.installed = installed;
+            this.packaged = packaged;
             bool upgrade = installed != null && packaged != null && packaged > installed;
-            stage = installed == null ? Stage.Fresh : (upgrade ? Stage.Upgrade : Stage.Current);
+            choice = installed == null ? Stage.Fresh : (upgrade ? Stage.Upgrade : Stage.Current);
 
             Text = "MY_PET 설치";
             FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -420,6 +506,12 @@ static class MyPetSetup
             desktopShortcut.SetBounds(20, 90, 360, 24);
             Controls.Add(desktopShortcut);
 
+            removeData = new CheckBox();
+            removeData.Text = "설정과 꾸민 모습도 지우기";
+            removeData.SetBounds(20, 90, 360, 24);
+            removeData.Visible = false;
+            Controls.Add(removeData);
+
             bar = new ProgressBar();
             bar.SetBounds(20, 92, 360, 20);
             bar.Minimum = 0;
@@ -439,8 +531,24 @@ static class MyPetSetup
             primary.Click += delegate { OnPrimary(); };
             secondary = MakeButton(176);
             secondary.Click += delegate { OnSecondary(); };
+            // 이미 설치되어 있을 때만: 왼쪽 아래 [삭제]
+            remove = MakeButton(20);
+            remove.Text = "삭제";
+            remove.ForeColor = Color.FromArgb(0xC8, 0x40, 0x2F);
+            remove.Click += delegate { ShowConfirmRemove(); };
             AcceptButton = primary;
+            ShowChoice();
+        }
 
+        /** 처음 화면: 설치 / 업데이트 / 이미 설치됨. */
+        void ShowChoice()
+        {
+            stage = choice;
+            removeData.Visible = false;
+            desktopShortcut.Visible = true;
+            primary.Enabled = true;
+            secondary.Enabled = true;
+            remove.Visible = installed != null;
             switch (stage)
             {
                 case Stage.Current:
@@ -448,6 +556,7 @@ static class MyPetSetup
                     detail.Text = "바로 켜거나, 문제가 있으면 다시 설치할 수 있어요.\n설정과 꾸민 모습은 그대로 남아요.";
                     primary.Text = "비트 켜기";
                     secondary.Text = "다시 설치";
+                    secondary.Visible = true;
                     break;
                 case Stage.Upgrade:
                     title.Text = "새 버전으로 업데이트할게요 " + VersionText(packaged);
@@ -462,6 +571,77 @@ static class MyPetSetup
                     secondary.Visible = false;
                     break;
             }
+        }
+
+        /** 삭제할까요? 설정도 지울지 고른다 (기본은 남김: 다시 설치하면 그대로). */
+        void ShowConfirmRemove()
+        {
+            stage = Stage.ConfirmRemove;
+            title.Text = "비트를 삭제할까요?";
+            detail.Text = "프로그램과 MY_PET 바로가기를 지워요.\n설정은 남겨 두면 다시 설치할 때 그대로예요.";
+            desktopShortcut.Visible = false;
+            removeData.Checked = false;
+            removeData.Visible = true;
+            remove.Visible = false;
+            primary.Text = "삭제";
+            secondary.Text = "취소";
+            secondary.Visible = true;
+            secondary.Focus();
+        }
+
+        void StartRemove()
+        {
+            if (IsAppRunning(home))
+            {
+                MessageBox.Show(this, "삭제하려면 비트를 먼저 꺼야 해요.\n"
+                    + "비트를 클릭하고 Esc 를 누르거나, 우클릭 → 종료한 다음 다시 눌러 주세요.",
+                    "MY_PET 삭제", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            stage = Stage.Removing;
+            bool data = removeData.Checked;
+            removeData.Visible = false;
+            primary.Enabled = false;
+            secondary.Enabled = false;
+            bar.Style = ProgressBarStyle.Marquee;
+            bar.Visible = true;
+            title.Text = "비트를 지우는 중이에요...";
+            detail.Text = "잠깐이면 돼요.";
+            Thread worker = new Thread(delegate ()
+            {
+                try
+                {
+                    Uninstall(home, data);
+                    BeginInvoke((MethodInvoker)delegate { ShowRemoved(data); });
+                }
+                catch (Exception e)
+                {
+                    BeginInvoke((MethodInvoker)delegate
+                    {
+                        MessageBox.Show(this, "비트를 다 지우지 못했어요.\n\n" + e.Message + "\n\n비트가 꺼져 있는지 확인하고 다시 해 주세요.",
+                            "MY_PET 삭제", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Close();
+                    });
+                }
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        void ShowRemoved(bool data)
+        {
+            stage = Stage.Removed;
+            bar.Visible = false;
+            desktopShortcut.Visible = false;
+            removeData.Visible = false;
+            remove.Visible = false;
+            title.Text = "비트를 삭제했어요";
+            detail.Text = data ? "설정과 꾸민 모습까지 모두 지웠어요.\n그동안 함께해 줘서 고마워요!"
+                : "설정과 꾸민 모습은 남겨 뒀어요.\n다시 설치하면 그대로 돌아와요.";
+            primary.Text = "닫기";
+            primary.Enabled = true;
+            secondary.Visible = false;
+            primary.Focus();
         }
 
         Button MakeButton(int x)
@@ -495,6 +675,12 @@ static class MyPetSetup
                 case Stage.Done:
                     StartAndClose();
                     break;
+                case Stage.ConfirmRemove:
+                    StartRemove();
+                    break;
+                case Stage.Removed:
+                    Close();
+                    break;
             }
         }
 
@@ -507,6 +693,10 @@ static class MyPetSetup
             else if (stage == Stage.Done)
             {
                 Close();
+            }
+            else if (stage == Stage.ConfirmRemove)
+            {
+                ShowChoice(); // 취소
             }
         }
 
@@ -530,6 +720,7 @@ static class MyPetSetup
             stage = Stage.Installing;
             primary.Enabled = false;
             secondary.Enabled = false;
+            remove.Visible = false;
             desktopShortcut.Visible = false;
             bar.Visible = true;
             title.Text = "비트를 설치하는 중이에요...";
