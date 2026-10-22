@@ -242,6 +242,10 @@ button {
   gap: 8px;
 }
 
+.footer-buttons [hidden] {
+  display: none;
+}
+
 .version,
 .hex {
   font-family: var(--mono);
