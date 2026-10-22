@@ -14,7 +14,8 @@ import java.util.concurrent.TimeUnit;
  */
 public final class Shortcuts {
 	public static final String NAME = "MY_PET";
-	static final String MARKER = "shortcuts-created";
+	/** 시작 메뉴 바로가기를 만든 표시 (미리보기 때 --shortcut 없이 만든 것을 한 번 고쳐 쓰게 이름을 바꿨다). */
+	static final String MARKER = "start-menu-shortcut";
 	/** 시작 메뉴 프로그램 폴더 (PowerShell 식). */
 	static final String PROGRAMS = "[Environment]::GetFolderPath('Programs')";
 	/** 바탕 화면 (OneDrive 로 옮긴 곳 포함, PowerShell 식). */
@@ -88,7 +89,8 @@ public final class Shortcuts {
 
 	/**
 	 * folders(PowerShell 식) 마다 WScript.Shell 로 "MY_PET.lnk" 를 만드는 스크립트.
-	 * keepExisting 이면 이미 있는 바로가기는 건드리지 않고 {@link #EXIT_EXISTS} 로 끝난다.
+	 * keepExisting 이면 이미 있는 (--shortcut 이 붙은) 바로가기는 건드리지 않고 {@link #EXIT_EXISTS} 로 끝난다.
+	 * --shortcut 이 없는 예전 바로가기는 고쳐 쓴다.
 	 */
 	static String script(Path exe, Path home, List<String> folders, boolean keepExisting) {
 		return "$ErrorActionPreference = 'Stop'\n"
@@ -96,9 +98,11 @@ public final class Shortcuts {
 			+ "foreach ($dir in @(" + String.join(", ", folders) + ")) {\n"
 			+ "  if (-not $dir) { continue }\n"
 			+ "  $path = Join-Path $dir " + quote(NAME + ".lnk") + "\n"
-			+ (keepExisting ? "  if (Test-Path -LiteralPath $path) { exit " + EXIT_EXISTS + " }\n" : "")
+			+ (keepExisting ? "  if ((Test-Path -LiteralPath $path) -and ($shell.CreateShortcut($path).Arguments -eq "
+				+ quote(MyPet.SHORTCUT_ARG) + ")) { exit " + EXIT_EXISTS + " }\n" : "")
 			+ "  $link = $shell.CreateShortcut($path)\n"
 			+ "  $link.TargetPath = " + quote(exe.toString()) + "\n"
+			+ "  $link.Arguments = " + quote(MyPet.SHORTCUT_ARG) + "\n"
 			+ "  $link.WorkingDirectory = " + quote(home.toString()) + "\n"
 			+ "  $link.IconLocation = " + quote(exe + ",0") + "\n"
 			+ "  $link.Description = " + quote("데스크톱 펫 비트") + "\n"

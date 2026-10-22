@@ -48,7 +48,7 @@ jobs:
         with:
           name: pkg-windows
           path: |
-            build/release/MyPet.exe
+            build/release/MyPet-Setup.exe
             build/release/MyPet.jar
 
   macos:

@@ -33,10 +33,15 @@ class ShortcutsTest {
 		// 바로가기를 다시 읽어서 대상 확인 (결과를 파일로 받아 한글이 깨지지 않게)
 		Path out = dir.resolve("target.txt");
 		assertEquals(0, Shortcuts.run("$l = (New-Object -ComObject WScript.Shell).CreateShortcut(" + Shortcuts.quote(link.toString()) + ")\n"
-			+ "[IO.File]::WriteAllText(" + Shortcuts.quote(out.toString()) + ", $l.TargetPath + '|' + $l.WorkingDirectory, [Text.Encoding]::UTF8)\n"));
+			+ "[IO.File]::WriteAllText(" + Shortcuts.quote(out.toString()) + ", $l.TargetPath + '|' + $l.Arguments + '|' + $l.WorkingDirectory,[Text.Encoding]::UTF8)\n"));
 		String read = Files.readString(out, StandardCharsets.UTF_8).replace("\uFEFF", "");
-		assertEquals(exe + "|" + home, read);
+		assertEquals(exe + "|" + MyPet.SHORTCUT_ARG + "|" + home, read);
 		// 설정의 [바로가기 만들기]: 이미 있으면 그대로 두고 "이미 있어요"
+		assertEquals(Shortcuts.EXIT_EXISTS, Shortcuts.run(Shortcuts.script(exe, home, folders, true)));
+		// --shortcut 이 없는 예전 바로가기는 고쳐 쓴다
+		assertEquals(0, Shortcuts.run("$s = New-Object -ComObject WScript.Shell; $l = $s.CreateShortcut(" + Shortcuts.quote(link.toString())
+			+ "); $l.Arguments = ''; $l.Save()\n"));
+		assertEquals(0, Shortcuts.run(Shortcuts.script(exe, home, folders, true)));
 		assertEquals(Shortcuts.EXIT_EXISTS, Shortcuts.run(Shortcuts.script(exe, home, folders, true)));
 	}
 
