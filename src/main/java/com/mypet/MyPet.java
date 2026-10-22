@@ -21,5 +21,7 @@ public final class MyPet {
 		}
 		Ui.installTheme();
 		SwingUtilities.invokeLater(() -> new PetApp().start());
+		// 윈도우: 처음 한 번 바탕 화면·시작 메뉴에 바로가기 (exe 를 찾아 실행하지 않아도 되게)
+		Shortcuts.createOnce(Constants.appDataDir());
 	}
 }
