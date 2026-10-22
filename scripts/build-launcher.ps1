@@ -21,7 +21,7 @@ New-Item -ItemType Directory -Force $release | Out-Null
 $output = Join-Path $release 'MyPet-Setup.exe'
 & $csc /nologo /target:winexe /optimize+ /codepage:65001 `
     /reference:System.dll /reference:System.Drawing.dll /reference:System.Windows.Forms.dll `
-    /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll `
+    /reference:System.IO.Compression.dll /reference:System.IO.Compression.FileSystem.dll /reference:Microsoft.VisualBasic.dll `
     "/resource:$Package,MyPet-windows-x64.zip" `
     "/resource:$(Join-Path $root 'packaging\MyPet.ico'),MyPet.ico" `
     "/win32icon:$(Join-Path $root 'packaging\MyPet.ico')" `

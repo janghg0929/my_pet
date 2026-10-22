@@ -6,7 +6,7 @@
 // - 설치 안 됨: [설치]
 // - 이 exe 에 든 버전이 더 새로움: [업데이트] (settings.json, 꾸민 모습 등은 그대로)
 // - 이미 같은(또는 더 새) 버전: [다시 설치] / [비트 켜기]
-// - 설치되어 있으면 [삭제]: 프로그램과 바로가기를 지운다 (설정·꾸민 모습은 고르면 함께)
+// - 설치되어 있으면 [삭제]: 프로그램과 바로가기를 지운다 (설정·꾸민 모습은 고르면 휴지통으로)
 // 평소 앱 업데이트(MyPet.jar)는 설치된 앱이 스스로 한다.
 //
 // 바로가기와 이 프로그램은 비트를 켤 때 --shortcut 을 붙인다. 예전 MyPet.exe(받은 파일이 곧 실행기였던 2.1.2 까지)는
@@ -162,22 +162,39 @@ static class MyPetSetup
     /** 설치된 비트가 지금 켜져 있는지 (켜져 있으면 파일이 잠겨서 바꿀 수 없다). */
     static bool IsAppRunning(string home)
     {
-        string target = Path.GetFullPath(Path.Combine(home, "MyPet.exe"));
-        foreach (Process process in Process.GetProcessesByName("MyPet"))
+        // 설치 폴더의 비트뿐 아니라 다른 곳(예전 MyPet.exe, 미리보기 폴더)에서 켠 비트도 같은 설치 폴더의
+        // my_pet.lock 과 settings.json 을 쓰고 있어서, 이름이 MyPet 인 프로세스가 하나라도 있으면 켜져 있는 것으로 본다
+        Process[] processes = Process.GetProcessesByName("MyPet");
+        foreach (Process process in processes)
         {
-            try
+            process.Dispose();
+        }
+        return processes.Length > 0 || IsLockHeld(home);
+    }
+
+    /** 비트가 잡고 있는 단일 실행 잠금 파일(my_pet.lock)을 다른 프로그램이 쓰고 있는지. */
+    static bool IsLockHeld(string home)
+    {
+        string path = Path.Combine(home, "my_pet.lock");
+        if (!File.Exists(path))
+        {
+            return false;
+        }
+        try
+        {
+            using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
             {
-                if (string.Equals(Path.GetFullPath(process.MainModule.FileName), target, StringComparison.OrdinalIgnoreCase))
-                {
-                    return true;
-                }
-            }
-            catch (Exception)
-            {
-                // 다른 사용자의 프로세스 등은 무시
+                return false;
             }
         }
-        return false;
+        catch (IOException)
+        {
+            return true;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
     }
 
     static string VersionText(Version version)
@@ -416,24 +433,53 @@ static class MyPetSetup
                 File.Delete(link);
             }
         }
-        if (removeData)
+        // 프로그램 파일 (설정은 건드리지 않는다)
+        RemoveOldProgram(home);
+        string app = Path.Combine(home, "app");
+        if (Directory.Exists(app))
         {
-            if (Directory.Exists(home))
-            {
-                Directory.Delete(home, true);
-            }
+            Directory.Delete(app, true); // 자동 업데이트로 받은 jar 도
         }
-        else
+        // 작은 파일은 못 지워도(탐색기가 아이콘을 잡고 있는 등) 그냥 남겨 둔다
+        foreach (string name in new string[] { IconFile, "my_pet.lock", "shortcut-icons", "start-menu-shortcut", "shortcuts-created" })
         {
-            RemoveOldProgram(home);
-            string app = Path.Combine(home, "app");
-            if (Directory.Exists(app))
-            {
-                Directory.Delete(app, true); // 자동 업데이트로 받은 jar 도
-            }
-            foreach (string name in new string[] { IconFile, "my_pet.lock", "shortcut-icons", "start-menu-shortcut", "shortcuts-created" })
+            try
             {
                 DeleteIfExists(Path.Combine(home, name));
+            }
+            catch (Exception)
+            {
+                // 남아도 괜찮다
+            }
+        }
+        if (removeData)
+        {
+            // 설정과 꾸민 모습은 휴지통으로 (실수로 지워도 되살릴 수 있게)
+            foreach (string name in new string[] { "settings.json", "settings.json.broken", "settings.json.tmp" })
+            {
+                string file = Path.Combine(home, name);
+                if (File.Exists(file))
+                {
+                    Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(file,
+                        Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+                }
+            }
+            string parts = Path.Combine(home, "parts");
+            if (Directory.Exists(parts))
+            {
+                Microsoft.VisualBasic.FileIO.FileSystem.DeleteDirectory(parts,
+                    Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            }
+            try
+            {
+                if (Directory.Exists(home) && Directory.GetFileSystemEntries(home).Length == 0)
+                {
+                    Directory.Delete(home);
+                }
+            }
+            catch (Exception)
+            {
+                // 빈 폴더가 남아도 괜찮다
             }
         }
         RefreshIcons();
@@ -507,7 +553,7 @@ static class MyPetSetup
             Controls.Add(desktopShortcut);
 
             removeData = new CheckBox();
-            removeData.Text = "설정과 꾸민 모습도 지우기";
+            removeData.Text = "설정과 꾸민 모습도 지우기 (휴지통으로)";
             removeData.SetBounds(20, 90, 360, 24);
             removeData.Visible = false;
             Controls.Add(removeData);
@@ -598,8 +644,14 @@ static class MyPetSetup
                     "MY_PET 삭제", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            stage = Stage.Removing;
             bool data = removeData.Checked;
+            if (data && MessageBox.Show(this, "몸 색, 만든 부위, 꾸민 모습, 저장한 모습이 모두 지워져요.\n"
+                + "(휴지통으로 옮겨서, 실수였다면 휴지통에서 되살릴 수 있어요)\n\n정말 지울까요?",
+                "MY_PET 삭제", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes)
+            {
+                return;
+            }
+            stage = Stage.Removing;
             removeData.Visible = false;
             primary.Enabled = false;
             secondary.Enabled = false;
@@ -636,7 +688,7 @@ static class MyPetSetup
             removeData.Visible = false;
             remove.Visible = false;
             title.Text = "비트를 삭제했어요";
-            detail.Text = data ? "설정과 꾸민 모습까지 모두 지웠어요.\n그동안 함께해 줘서 고마워요!"
+            detail.Text = data ? "설정과 꾸민 모습은 휴지통으로 옮겼어요.\n그동안 함께해 줘서 고마워요!"
                 : "설정과 꾸민 모습은 남겨 뒀어요.\n다시 설치하면 그대로 돌아와요.";
             primary.Text = "닫기";
             primary.Enabled = true;
