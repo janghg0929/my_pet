@@ -617,6 +617,31 @@ button {
   gap: 6px;
 }
 
+/* 그룹: 묶기 / 좌우·상하 대칭 / 풀기 (점선 아래) */
+.part-menu .menu-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--muted);
+}
+
+.part-menu .menu-group[hidden] {
+  display: none;
+}
+
+.part-menu .menu-group-title {
+  width: 100%;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.part-menu .menu-check {
+  font-size: 13px;
+}
+
 /* 만든 부위: 저장 / 다른 이름으로 저장 (점선 아래 한 줄) */
 .part-menu .menu-save {
   margin-top: 10px;

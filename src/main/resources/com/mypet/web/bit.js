@@ -74,7 +74,39 @@
       normalizePart(key, copy[key]);
     });
     copy.timeline = normalizeTimeline(copy.timeline);
+    copy.groups = normalizeGroups(copy);
     return copy;
+  }
+
+  /**
+   * 부위 그룹 (PartLayout.sanitizeGroups 와 같다): 있는 부위만, 부위는 한 그룹에만, 두 개 이상일 때만.
+   * {id, members, mirrorX, mirrorY, pairsX, pairsY} — 대칭 짝은 같은 그룹 부위끼리.
+   */
+  function normalizeGroups(layout) {
+    var used = {};
+    var groups = [];
+    (Array.isArray(layout.groups) ? layout.groups : []).forEach(function (g, index) {
+      if (!g || !Array.isArray(g.members)) {
+        return;
+      }
+      var members = g.members.filter(function (key, i) {
+        return typeof key === "string" && layout[key] && !used[key] && g.members.indexOf(key) === i;
+      });
+      if (members.length < 2) {
+        return;
+      }
+      members.forEach(function (key) { used[key] = true; });
+      function pairs(list) {
+        return (Array.isArray(list) ? list : []).filter(function (p) {
+          return Array.isArray(p) && p.length === 2 && p[0] !== p[1] && members.indexOf(p[0]) >= 0 && members.indexOf(p[1]) >= 0;
+        }).map(function (p) { return [p[0], p[1]]; });
+      }
+      groups.push({
+        id: typeof g.id === "string" && /^[A-Za-z0-9_]{1,24}$/.test(g.id) ? g.id : "g_" + (index + 1) + "_" + members.length,
+        members: members, mirrorX: !!g.mirrorX, mirrorY: !!g.mirrorY, pairsX: pairs(g.pairsX), pairsY: pairs(g.pairsY)
+      });
+    });
+    return groups;
   }
 
   // ---------------------------------------------------------------- 고급: 시간 막대 (PartTimeline.java 와 같은 계산)
@@ -294,6 +326,7 @@
     part.resW = part.resW > 0 && part.resH > 0 ? Math.min(256, Math.round(part.resW)) : 0;
     part.resH = part.resW > 0 ? Math.min(256, Math.round(part.resH)) : 0;
     part.visible = part.visible !== false;
+    part.flipY = !!part.flipY;
     part.shape = part.shape || (isCustom(key) ? "dot" : "rect");
     part.name = part.name || null;
     part.pivot = part.pivot || defaultPivot(key);
@@ -350,6 +383,24 @@
 
   function mirroredPivot(pivot) {
     return pivot === "left" ? "right" : pivot === "right" ? "left" : pivot;
+  }
+
+  /** 상하 대칭: 아래위 반대쪽 부위에 넣을 움직임 (흔들기는 도는 방향이 반대, 나머지는 그대로). */
+  function mirroredMotionY(m) {
+    var copy = normalizeMotion(m);
+    if (copy.type === "swing") {
+      copy.flip = !copy.flip;
+    }
+    return copy;
+  }
+
+  /** 상하 대칭: 아래위 반대쪽 부위에 넣을 애니메이션 (위아래로 옮기기와 돌리기가 반대). */
+  function mirroredAnimationY(a) {
+    return { dx: a.dx || 0, dy: -(a.dy || 0), rotation: normalizeRotation(-(a.rotation || 0)), motion: mirroredMotionY(a.motion) };
+  }
+
+  function mirroredPivotY(pivot) {
+    return pivot === "top" ? "bottom" : pivot === "bottom" ? "top" : pivot;
   }
 
   var NO_MOTION = { dx: 0, dy: 0, rotation: 0, scaleX: 1, scaleY: 1 };
@@ -800,7 +851,7 @@
     return c;
   }
 
-  function drawImage(ctx, image, x, y, w, h, flip) {
+  function drawImage(ctx, image, x, y, w, h, flip, flipY) {
     ctx.save();
     if (image.pixelArt) {
       // 도트 그림은 또렷하게: 정수 자리·크기에 미리 키운 그림을 그대로 (소수 자리면 다시 뭉개진다)
@@ -812,9 +863,10 @@
       image = crispScaled(image, w, h);
     }
     setSmoothing(ctx, true);
-    if (flip) {
-      ctx.translate(x + w, y);
-      ctx.scale(-1, 1);
+    if (flip || flipY) {
+      // 뒤집기: 좌우(flip), 위아래(flipY, 그룹의 상하 대칭)
+      ctx.translate(flip ? x + w : x, flipY ? y + h : y);
+      ctx.scale(flip ? -1 : 1, flipY ? -1 : 1);
       ctx.drawImage(image, 0, 0, w, h);
     } else {
       ctx.drawImage(image, x, y, w, h);
@@ -836,7 +888,7 @@
     ctx.save();
     applyPartTransform(ctx, part, ox + x * k, oy + y * k, mt, k);
     if (image) {
-      drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, flip);
+      drawImage(ctx, image, ox + x * k, oy + y * k, part.w * k, part.h * k, flip, part.flipY);
     } else if (part.shape === "dot") {
       // 새로 만든 부위: 검은 점 (앱 안 웹 엔진은 ellipse 가 없어서 원을 늘린다)
       ctx.save();
@@ -1200,6 +1252,9 @@
     normalizePart: normalizePart,
     mirroredAnimation: mirroredAnimation,
     mirroredPivot: mirroredPivot,
+    mirroredAnimationY: mirroredAnimationY,
+    mirroredPivotY: mirroredPivotY,
+    normalizeGroups: normalizeGroups,
     pivotPoint: pivotPoint,
     partTransform: partTransform,
     motionTransform: motionTransform,

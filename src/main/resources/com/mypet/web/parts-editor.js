@@ -1,14 +1,15 @@
 // 모습 꾸미기 편집기: 부위(몸통, 양팔, 양다리, 눈)를 고르고, 끌어서 옮기고, 모서리로 크기를 바꾸고, 위쪽 동그라미로 돌린다.
 // [모양·사진]: 숫자 입력, 부위 사진 넣기/빼기(눈은 표정별).
 // [움직임]: 상황(항상/쉴 때/걸을 때/공중/잡힐 때)마다 자세(끌거나 돌려서) + 반복 움직임, 부위 중심점.
-// 좌우 맞추기, 기본 비트로 되돌리기, Ctrl+Z / Ctrl+Y (되돌리기 / 다시 하기), 마우스 휠 확대 + 빈 곳 끌어서 화면 옮기기.
+// 좌우 맞추기, 기본 비트로 되돌리기, Ctrl+Z / Ctrl+Y (되돌리기 / 다시 하기), 마우스 휠 확대 + Shift+끌기로 화면 옮기기.
+// 여러 부위 고르기·그룹·그룹 대칭·부위 하나 더는 parts-select.js.
 // 바뀐 배치는 send("setParts", JSON) 으로 Java 에 보내 화면 비트에 바로 적용하고 저장한다.
 (function () {
   "use strict";
 
   // 부위 고르기 순서 (만든 부위는 뒤에 붙는다)
   var PART_ORDER = ["body", "eyes", "leftArm", "rightArm", "leftLeg", "rightLeg"];
-  var MAX_CUSTOM = 20;
+  var MAX_CUSTOM = 40; // PartLayout.MAX_CUSTOM
   var CUSTOM_SIZE = 24; // 새로 만든 부위의 크기 (PartLayout.CUSTOM_SIZE)
   var MAX_RESOLUTION = 256; // 그림판 해상도 한쪽 칸 수 (PartLayout.MAX_RESOLUTION)
   var EXPRESSIONS = [{ key: "neutral", label: "평소" }, { key: "grab", label: "잡혔을 때" }, { key: "fall", label: "떨어질 때" }];
@@ -428,10 +429,13 @@
     if (!part) {
       return;
     }
-    if (key !== this.selected) {
-      this.select(key);
+    if (this.selectedKeys().indexOf(key) < 0) {
+      this.selectKeys(this.groupMembers(key), key); // 안 고른 부위면 그 부위(그룹째)만
+    } else if (key !== this.selected) {
+      this.select(key, true); // 여러 개 고른 채로 우클릭: 고른 것은 그대로
     }
     this.menuKey = key;
+    this.renderGroupMenu(key);
     var res = this.resolutionOf(part);
     document.getElementById("part-menu-name").textContent = window.BitView.partName(this.layout, key);
     document.getElementById("part-menu-save").hidden = !window.BitView.isCustom(key);
@@ -546,11 +550,14 @@
       panel.hidden = true;
     });
     document.getElementById("parts-remove").addEventListener("click", function () {
-      var part = self.part();
-      if (!part || part.visible === false) {
+      var keys = self.selectedKeys();
+      if (!keys.length) {
         return;
       }
-      part.visible = false; // 설정은 남겨 둔다: 가져오기로 다시 넣으면 그대로
+      keys.forEach(function (key) {
+        self.layout[key].visible = false; // 설정은 남겨 둔다: 가져오기로 다시 넣으면 그대로
+      });
+      self.selection = [];
       self.selected = self.pickerKeys()[0] || "body";
       self.afterPartsChanged();
     });
@@ -621,10 +628,17 @@
       name.textContent = window.BitView.partName(self.layout, key);
       row.appendChild(name);
       if (part.visible !== false) {
-        var stateText = document.createElement("span");
-        stateText.className = "add-state";
-        stateText.textContent = "화면에 있음";
-        row.appendChild(stateText);
+        // 화면에 있으면 같은 부위를 하나 더 (눈은 하나만)
+        var another = document.createElement("button");
+        another.className = "btn btn-small add-another";
+        another.textContent = "하나 더";
+        another.title = key === "eyes" ? "눈은 하나만 넣을 수 있어요" : "같은 부위를 하나 더 넣기";
+        another.disabled = key === "eyes" || window.BitView.customKeys(self.layout).length >= MAX_CUSTOM;
+        another.addEventListener("click", function () {
+          document.getElementById("parts-add-panel").hidden = true;
+          self.addAnother(key);
+        });
+        row.appendChild(another);
       } else {
         var bring = document.createElement("button");
         bring.className = "btn btn-small btn-primary";
@@ -684,6 +698,7 @@
   /** 만든 부위를 완전히 지운다 (시간 막대 키까지). */
   PartsEditor.prototype.deletePart = function (key) {
     delete this.layout[key];
+    this.removeFromGroups(key);
     var timeline = this.layout.timeline;
     window.BitView.STATES.forEach(function (state) {
       if (timeline && timeline[state]) {
@@ -1032,7 +1047,7 @@
     if (advanced) {
       hint = "시간을 고르고 부위를 끌거나 돌리면 ◆ 키가 생겨요";
     } else if (shape) {
-      hint = "끌어서 옮기기 · 모서리 네모는 크기 · 위 동그라미는 회전";
+      hint = "끌어서 옮기기 · 빈 곳 끌기: 여러 개 고르기 · Shift+끌기: 화면 옮기기";
     } else if (always) {
       hint = "언제나 하는 움직임 · 자세는 다른 상황에서 잡아요";
     } else {
@@ -1098,14 +1113,27 @@
     if (this.drag) {
       return;
     }
+    var before = this.layout && this.layout[this.selected];
+    var image = before ? before.image : undefined;
     this.layout = window.BitView.copyLayout(layout);
+    var after = this.layout[this.selected];
+    // 사진 넣기/빼기는 Java 가 바꿔서 보내 준다: 대칭 그룹이면 짝 부위에도 맞춰서 다시 저장
+    var group = after && image !== undefined && after.image !== image && this.groupOf ? this.groupOf(this.selected) : null;
+    if (group && (group.mirrorX || group.mirrorY)) {
+      this.mirrorGroupFrom(this.selected);
+      this.commit(0);
+    }
     this.remember(this.layout);
     this.refreshControls();
     this.draw();
   };
 
-  PartsEditor.prototype.select = function (key) {
+  /** 부위를 고른다. keepSelection 이 아니면 그 부위(그룹이면 그룹째)만 고른 상태로. */
+  PartsEditor.prototype.select = function (key, keepSelection) {
     this.selected = key;
+    if (!keepSelection) {
+      this.selection = this.groupMembers ? this.groupMembers(key) : [key];
+    }
     if (key !== "eyes") {
       this.expression = "neutral";
     }
@@ -1115,6 +1143,10 @@
 
   PartsEditor.prototype.part = function () {
     return this.layout[this.selected];
+  };
+
+  PartsEditor.prototype.maxCustom = function () {
+    return MAX_CUSTOM;
   };
 
   PartsEditor.prototype.hasImage = function () {
@@ -1201,6 +1233,9 @@
   PartsEditor.prototype.afterChange = function (key) {
     if (this.layout.symmetric && MIRROR[key]) {
       this.mirrorFrom(key);
+    }
+    if (this.mirrorGroupFrom) {
+      this.mirrorGroupFrom(key); // 그룹 좌우·상하 대칭
     }
   };
 
@@ -1317,6 +1352,10 @@
       this.drawTimeline();
     }
 
+    // 함께 고른 부위(파란 점선)와 고르기 네모
+    if (this.drawSelection) {
+      this.drawSelection(ctx, d, pose);
+    }
     // 고른 부위 표시: 점선 테두리 + 크기 조절 손잡이(모양 화면만) + 회전 손잡이, 부위와 같이 돌린다.
     // 움직임 "항상"에서는 손잡이 없이 테두리만 (자세를 잡지 않으니까)
     var r = this.partRect(this.selected, pose);
@@ -1441,7 +1480,11 @@
     if ((this.shaping() || this.advanced()) && pointIn(this.handleRect(selected), q.x, q.y)) {
       return { key: this.selected, resize: true };
     }
-    var order = this.hitOrder();
+    // 겹쳐 있으면 이미 고른 부위를 먼저 (여러 개 고른 채로 끌 수 있게)
+    var picked = this.selectedKeys ? this.selectedKeys() : [this.selected];
+    var all = this.hitOrder();
+    var order = all.filter(function (k) { return picked.indexOf(k) >= 0; })
+      .concat(all.filter(function (k) { return picked.indexOf(k) < 0; }));
     for (var i = 0; i < order.length; i++) {
       var r = this.partRect(order[i], pose);
       var local = toLocal(r, x, y);
@@ -1460,7 +1503,7 @@
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
     var movable = this.editable();
-    this.canvas.style.cursor = !target ? "grab"
+    this.canvas.style.cursor = !target ? "crosshair"
       : (target.rotate ? "grab" : (target.resize ? "nwse-resize" : (movable ? "move" : "pointer")));
   };
 
@@ -1470,10 +1513,11 @@
     }
     var p = this.pointer(event);
     var target = this.hit(p.x, p.y);
+    // 빈 곳 끌기(고르기 네모), Shift(더하기·화면 옮기기), 여러 개 옮기기는 parts-select.js
+    if (this.selectMouseDown(event, p, target)) {
+      return;
+    }
     if (!target) {
-      // 빈 곳: 화면 옮기기
-      event.preventDefault();
-      this.drag = { pan: true, startX: p.x, startY: p.y, ox: this.view.ox, oy: this.view.oy };
       return;
     }
     event.preventDefault();
@@ -1507,6 +1551,9 @@
     }
     var p = this.pointer(event);
     var drag = this.drag;
+    if (this.selectMouseMove(p)) {
+      return;
+    }
     if (drag.pan) {
       this.view.ox = drag.ox + (p.x - drag.startX);
       this.view.oy = drag.oy + (p.y - drag.startY);
@@ -1554,6 +1601,9 @@
 
   PartsEditor.prototype.onMouseUp = function () {
     if (!this.drag) {
+      return;
+    }
+    if (this.selectMouseUp()) {
       return;
     }
     var moved = this.drag.moved;

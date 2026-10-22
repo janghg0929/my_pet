@@ -871,6 +871,7 @@ final class PetApp implements SettingsHost {
 		} else {
 			target.image = name;
 			target.flip = false;
+			target.flipY = false;
 		}
 		// 가로 크기는 그대로 두고 사진 비율에 맞춰 세로 크기를 맞춘다 (눈은 평소 표정 사진일 때만)
 		if (image != null && (!eyes || PartLayout.EXPR_NEUTRAL.equals(expressionKey))) {
@@ -921,6 +922,7 @@ final class PetApp implements SettingsHost {
 		} else {
 			target.image = null;
 			target.flip = false;
+			target.flipY = false;
 		}
 		if (copy.symmetric && PartLayout.mirrorOf(part) != null) {
 			copy.mirrorFrom(part);
@@ -2139,6 +2141,7 @@ final class PetApp implements SettingsHost {
 		PartTimeline.Photo photo) {
 		String imageName = part.image;
 		boolean flip = part.flip;
+		boolean flipY = part.flipY;
 		if (photo != null && !photo.base() && partImages.get(photo.name()) != null) {
 			// 시간 막대 키가 바꾼 사진 (못 읽으면 원래대로)
 			imageName = photo.name();
@@ -2161,7 +2164,7 @@ final class PetApp implements SettingsHost {
 			} else if (image == null) {
 				Draw.rect(g, left, top, left + w, top + h, color, "#000000", border);
 			} else {
-				drawImage(g, image, left, top, w, h, flip, pixel);
+				drawImage(g, image, left, top, w, h, flip, flipY, pixel);
 			}
 			return;
 		}
@@ -2171,7 +2174,7 @@ final class PetApp implements SettingsHost {
 			double top = Util.pyRound(y);
 			applyPartTransform(gr, part, left, top, motion);
 			if (image != null) {
-				drawImage(gr, image, left, top, part.w, part.h, flip, pixel);
+				drawImage(gr, image, left, top, part.w, part.h, flip, flipY, pixel);
 				return;
 			}
 			// 돌린 네모는 계단처럼 보이지 않게 부드럽게 그린다 (바깥을 테두리 색으로 채우고 안쪽을 몸 색으로)
@@ -2211,7 +2214,8 @@ final class PetApp implements SettingsHost {
 		}
 	}
 
-	private static void drawImage(Graphics2D g, BufferedImage image, double x, double y, double w, double h, boolean flip, boolean pixel) {
+	private static void drawImage(Graphics2D g, BufferedImage image, double x, double y, double w, double h, boolean flip, boolean flipY,
+		boolean pixel) {
 		Graphics2D gi = (Graphics2D) g.create();
 		try {
 			gi.setRenderingHint(RenderingHints.KEY_INTERPOLATION, pixel
@@ -2230,6 +2234,10 @@ final class PetApp implements SettingsHost {
 			if (flip) {
 				gi.translate(w, 0);
 				gi.scale(-1, 1);
+			}
+			if (flipY) {
+				gi.translate(0, h);
+				gi.scale(1, -1);
 			}
 			gi.scale(w / image.getWidth(), h / image.getHeight());
 			gi.drawImage(image, 0, 0, null);
@@ -2273,7 +2281,7 @@ final class PetApp implements SettingsHost {
 		BufferedImage eyeImage = partImages.tinted(eyeName, currentCharacterColor);
 		if (eyeImage != null) {
 			drawImage(graphics, eyeImage, charOriginX + eyes.x + eyeDrawnShift + eyeDrawnInvalidOffset,
-				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, flip, PartImages.isPixelArt(eyeName));
+				charOriginY + eyes.y + (eyeDrawnShiftY * eyeShapeScale), eyes.w, eyes.h, flip, false, PartImages.isPixelArt(eyeName));
 			return;
 		}
 

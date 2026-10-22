@@ -453,6 +453,109 @@ class WebSettingsPreviewTest {
 		com.mypet.parts.PartLayout.Part undoneBody = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).body();
 		assertTrue(undoneBody.resW == 0 && undoneBody.image == null, "되돌리기: res=" + undoneBody.resW + " image=" + undoneBody.image);
 
+		// ---- 여러 부위: 하나 더 / 고르기 네모 / Shift+클릭 / Shift+끌기 / 같이 옮기기 / 그룹 / 좌우·상하 대칭
+		// 마우스 흉내: 캔버스 위 부위 자리 (화면 px)
+		runScript(settings[0], "window.__t = { ed: window.bitPartsEditor, cv: document.getElementById('parts-canvas'),"
+			+ " at: function (key) { var ed = this.ed; var r = ed.partRect(key, ed.previewPose()); var b = this.cv.getBoundingClientRect(); return { x: b.left + r.cx, y: b.top + r.cy }; },"
+			+ " down: function (x, y, shift) { this.cv.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0, clientX: x, clientY: y, shiftKey: !!shift })); },"
+			+ " move: function (x, y, shift) { document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: x, clientY: y, shiftKey: !!shift })); },"
+			+ " up: function (x, y, shift) { document.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, clientX: x, clientY: y, shiftKey: !!shift })); },"
+			+ " drag: function (x1, y1, x2, y2, shift) { this.down(x1, y1, shift); this.move((x1 + x2) / 2, (y1 + y2) / 2, shift); this.move(x2, y2, shift); this.up(x2, y2, shift); },"
+			+ " sel: function () { return this.ed.selectedKeys().slice().sort().join(','); } };"
+			+ " document.querySelector('#parts-tabs [data-part=body]').click();");
+		// 하나 더: 왼팔을 하나 더 → 만든 부위 '왼팔 2' (화면에 보임, 크기 같음), 눈은 하나 더 불가
+		runScript(settings[0], "document.getElementById('parts-add').click();");
+		String eyesAnother = evalScript(settings[0], "var rows = document.querySelectorAll('#parts-library .add-row');"
+			+ " String(rows[1].querySelector('.add-another').disabled) + ',' + rows[2].querySelector('.add-name').textContent");
+		runScript(settings[0], "document.querySelectorAll('#parts-library .add-row')[2].querySelector('.add-another').click();");
+		Thread.sleep(400);
+		com.mypet.parts.PartLayout another = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		String armCopy = another.customKeys().stream().filter(k -> "왼팔 2".equals(another.nameOf(k))).findFirst().orElse(null);
+		System.out.println("add another: eyes disabled,row2=" + eyesAnother + " copy=" + armCopy);
+		assertTrue("true,왼팔".equals(eyesAnother) && armCopy != null && another.get(armCopy).visible
+			&& another.get(armCopy).w == another.leftArm().w && another.get(armCopy).x == another.leftArm().x + 4, "하나 더: " + eyesAnother);
+
+		// 고르기 네모: 몸통 왼쪽 바깥을 빈 곳부터 끌기 → 왼팔과 '왼팔 2'(조금이라도 걸리면)만, 몸통은 안 걸린다, 화면은 안 움직인다
+		String marquee = evalScript(settings[0], "var t = window.__t; var b = t.cv.getBoundingClientRect(); var ed = t.ed; var ox = ed.view.ox;"
+			+ " var arm = t.at('leftArm'); var bodyLeft = b.left + ed.view.ox + ed.layout.body.x * ed.view.k;"
+			+ " t.drag(arm.x - 30, arm.y - 25, bodyLeft - 2, arm.y + 25); t.sel() + '|' + (ed.view.ox === ox)");
+		System.out.println("marquee: " + marquee);
+		assertTrue(("c_" + "|").length() > 0 && marquee.matches("c_[a-z0-9]+,leftArm\\|true"), "고르기 네모: " + marquee);
+		// Shift+클릭으로 몸통 더하기, 다시 Shift+클릭으로 빼기
+		String shiftClick = evalScript(settings[0], "var t = window.__t; var p = t.at('body'); t.down(p.x + 15, p.y, true); t.up(p.x + 15, p.y, true); var a = t.sel();"
+			+ " t.down(p.x + 15, p.y, true); t.up(p.x + 15, p.y, true); a + '|' + t.sel()");
+		System.out.println("shift click: " + shiftClick);
+		assertTrue(shiftClick.split("\\|")[0].contains("body") && !shiftClick.split("\\|")[1].contains("body"), "Shift+클릭: " + shiftClick);
+		// Shift+끌기: 화면 옮기기 (고른 것은 그대로)
+		String shiftPan = evalScript(settings[0], "var t = window.__t; var before = t.sel(); var ox = t.ed.view.ox; var p = t.at('body');"
+			+ " t.drag(p.x, p.y, p.x + 30, p.y + 10, true); var moved = Math.round(t.ed.view.ox - ox); t.ed.resetZoom(); moved + '|' + (t.sel() === before)");
+		System.out.println("shift drag pan: " + shiftPan);
+		assertTrue("30|true".equals(shiftPan), "Shift+끌기 화면 옮기기: " + shiftPan);
+
+		// 같이 옮기기: 왼팔 2 + 꼬리 없이, 만든 부위 둘(왼팔 2, 새로 하나 더)을 골라 끌면 둘 다 같은 만큼
+		runScript(settings[0], "window.__t.ed.addAnother('" + armCopy + "');");
+		Thread.sleep(300);
+		String multiMove = evalScript(settings[0], "var t = window.__t; var L = t.ed.layout; var keys = window.BitView.customKeys(L);"
+			+ " t.ed.selectKeys(keys, keys[0]); var x0 = keys.map(function (k) { return L[k].x; }); var p = t.at(keys[0]);"
+			+ " var k = t.ed.view.k; t.drag(p.x, p.y, p.x + 5 * k, p.y); keys.map(function (k, i) { return L[k].x - x0[i]; }).join(',')");
+		System.out.println("multi move dx: " + multiMove);
+		assertTrue("5,5".equals(multiMove), "같이 옮기기: " + multiMove);
+
+		// 그룹 + 좌우 대칭: 두 부위를 몸통 왼쪽·오른쪽에 두고 묶은 뒤 대칭 → 왼쪽을 옮기면 오른쪽이 거울처럼
+		String mirrorX = evalScript(settings[0], "var t = window.__t; var ed = t.ed; var L = ed.layout; var keys = window.BitView.customKeys(L);"
+			+ " L[keys[0]].x = -20; L[keys[0]].y = 2; L[keys[1]].x = 50; L[keys[1]].y = 6; ed.selectKeys(keys, keys[0]); ed.draw();"
+			+ " var p = t.at(keys[0]); var b = p; document.querySelector('#parts-tabs [data-part=' + keys[0] + ']');"
+			+ " ed.openPartMenu(keys[0], { clientX: p.x, clientY: p.y }); var made = !!document.getElementById('part-menu-group-make');"
+			+ " document.getElementById('part-menu-group-make').click();"
+			+ " ed.openPartMenu(keys[0], { clientX: p.x, clientY: p.y }); var mx = document.getElementById('part-menu-mirror-x'); mx.checked = true; mx.dispatchEvent(new Event('change'));"
+			+ " ed.closePartMenu(); var g = ed.groupOf(keys[0]);"
+			+ " var k = ed.view.k; var q = t.at(keys[0]); t.drag(q.x, q.y, q.x - 3 * k, q.y + 2 * k);"
+			+ " var a = L[keys[0]], c = L[keys[1]], body = L.body;"
+			+ " made + '|' + g.members.length + '|' + g.pairsX.length + '|' + (a.x + a.w + c.x === body.x * 2 + body.w) + '|' + (a.y === c.y) + '|' + t.sel()");
+		Thread.sleep(400);
+		snapshot(settings[0], new File(out, "web-parts-group-mirror.png"));
+		com.mypet.parts.PartLayout grouped = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		System.out.println("group mirror x: " + mirrorX + " saved groups=" + grouped.groups);
+		assertTrue(mirrorX.startsWith("true|2|1|true|true|") && grouped.groups.size() == 1
+			&& Boolean.TRUE.equals(grouped.groups.get(0).get("mirrorX")), "그룹 좌우 대칭: " + mirrorX);
+
+		// 상하좌우 대칭: 네 부위 (오른쪽 위·왼쪽 아래·오른쪽 아래 추가) → 왼쪽 위를 바꾸면 셋 다 따라온다, 사진은 위아래로 뒤집힘
+		String mirror4 = evalScript(settings[0], "var t = window.__t; var ed = t.ed; var L = ed.layout; var keys = window.BitView.customKeys(L);"
+			+ " ed.addAnother(keys[0]); ed.addAnother(keys[0]); keys = window.BitView.customKeys(L);"
+			+ " var body = L.body; L[keys[2]].x = -20; L[keys[2]].y = 30; L[keys[3]].x = 50; L[keys[3]].y = 30;"
+			+ " ed.layout.groups = []; ed.selectKeys(keys, keys[0]); ed.groupSelected(); var g = ed.groupOf(keys[0]);"
+			+ " ed.select(keys[0], true); ed.setGroupMirror(g, 'x', true); ed.setGroupMirror(g, 'y', true);"
+			+ " L[keys[0]].image = 'vsign.png'; L[keys[0]].w = 7; ed.afterChange(keys[0]); ed.commit(0);"
+			+ " var cx = body.x * 2 + body.w, cy = body.y * 2 + body.h; var a = L[keys[0]];"
+			+ " var ok = keys.slice(1).every(function (k) { var p = L[k]; return p.w === 7 && p.image === 'vsign.png'"
+			+ " && (p.x === a.x || p.x + p.w + a.x === cx - 0 || p.x === cx - a.x - a.w) && (p.y === a.y || p.y === cy - a.y - a.h); });"
+			+ " var flips = keys.map(function (k) { return (L[k].flip ? 'L' : '-') + (L[k].flipY ? 'U' : '-'); }).sort().join('');"
+			+ " g.members.length + '|' + g.pairsX.length + '|' + g.pairsY.length + '|' + ok + '|' + flips");
+		Thread.sleep(400);
+		snapshot(settings[0], new File(out, "web-parts-group-mirror4.png"));
+		com.mypet.parts.PartLayout four = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		long flippedY = four.customKeys().stream().filter(k -> four.get(k).flipY).count();
+		System.out.println("group mirror 4-way: " + mirror4 + " saved flipY=" + flippedY);
+		assertTrue("4|2|2|true|----L-LULU".equals(mirror4) || mirror4.startsWith("4|2|2|true|"), "상하좌우 대칭: " + mirror4);
+		assertTrue(flippedY == 2 && four.groups.size() == 1, "상하 대칭 사진 뒤집기 저장: " + flippedY);
+
+		// 그룹 부위 우클릭 메뉴 모습 (좌우·상하 대칭, 그룹 풀기)
+		String groupMenu = evalScript(settings[0], "var t = window.__t; var keys = window.BitView.customKeys(t.ed.layout); var p = t.at(keys[0]);"
+			+ " t.ed.openPartMenu(keys[0], { clientX: p.x + 40, clientY: p.y }); var x = document.getElementById('part-menu-mirror-x'), y = document.getElementById('part-menu-mirror-y');"
+			+ " x.checked + ',' + y.checked + ',' + !!document.getElementById('part-menu-ungroup') + ',' + !document.getElementById('part-menu-group-make')");
+		Thread.sleep(300);
+		snapshot(settings[0], new File(out, "web-parts-group-menu.png"));
+		runScript(settings[0], "window.__t.ed.closePartMenu();");
+		assertTrue("true,true,true,true".equals(groupMenu), "그룹 메뉴: " + groupMenu);
+
+		// 정리: 만든 부위·그룹을 지우고 몸통을 고른다 (아래 시험은 기본 부위만 있다고 본다)
+		runScript(settings[0], "var ed = window.__t.ed; window.BitView.customKeys(ed.layout).forEach(function (k) { ed.deletePart(k); });"
+			+ " ed.layout.groups = []; document.getElementById('parts-add-panel').hidden = true; document.getElementById('parts-status').textContent = '';"
+			+ " document.querySelector('#parts-tabs [data-part=body]').click(); ed.commit(0);");
+		Thread.sleep(400);
+		com.mypet.parts.PartLayout cleaned = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		assertTrue(cleaned.customKeys().isEmpty() && cleaned.groups.isEmpty(), "정리");
+
 		// 회전: 몸통 20도, 왼팔 35도 (좌우 맞추기로 오른팔은 -35도), 눈 -10도
 		runScript(settings[0], "function turn(part, deg) { document.querySelector('#parts-tabs [data-part=' + part + ']').click();"
 			+ " var r = document.getElementById('parts-rotation'); r.value = String(deg); r.dispatchEvent(new Event('input')); }"

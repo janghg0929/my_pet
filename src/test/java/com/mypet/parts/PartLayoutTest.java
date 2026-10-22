@@ -9,6 +9,7 @@ import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -261,5 +262,31 @@ class PartLayoutTest {
 		assertEquals(PartLayout.MAX_RESOLUTION, clamped.body().resW);
 		assertEquals(PartLayout.MAX_RESOLUTION, clamped.body().resH);
 		assertEquals(0, clamped.get(PartLayout.EYES).resW);
+	}
+
+	@Test
+	void groupsAndVerticalFlipRoundTripAndAreCleaned() {
+		Map<String, Object> json = PartLayout.defaults().toJson();
+		json.put("c_horn1", Map.of("name", "뿔", "x", -10, "y", 0, "w", 6, "h", 6, "image", "px_a.png", "flipY", true));
+		json.put("c_horn2", Map.of("name", "뿔 2", "x", 48, "y", 0, "w", 6, "h", 6));
+		json.put("groups", List.of(
+			Map.of("id", "g_1", "members", List.of("c_horn1", "c_horn2", "nope"), "mirrorX", true,
+				"pairsX", List.of(List.of("c_horn1", "c_horn2"), List.of("c_horn1", "leftArm"))),
+			// 이미 다른 그룹에 든 부위, 하나뿐인 그룹은 버린다
+			Map.of("id", "g_2", "members", List.of("c_horn1", "leftArm")),
+			Map.of("id", "bad id!", "members", List.of("leftLeg", "rightLeg"))));
+		PartLayout layout = PartLayout.fromJson(Json.read(Json.write(json)));
+		assertTrue(layout.get("c_horn1").flipY);
+		assertFalse(layout.get("c_horn2").flipY);
+		assertEquals(2, layout.groups.size());
+		Map<String, Object> first = layout.groups.get(0);
+		assertEquals(List.of("c_horn1", "c_horn2"), first.get("members"));
+		assertEquals(Boolean.TRUE, first.get("mirrorX"));
+		assertEquals(List.of(List.of("c_horn1", "c_horn2")), first.get("pairsX"));
+		assertEquals(List.of("leftLeg", "rightLeg"), layout.groups.get(1).get("members"));
+		assertTrue(((String) layout.groups.get(1).get("id")).startsWith("g_"));
+		// 다시 써도 그대로, 복사도 그대로
+		assertEquals(Json.write(layout.toJson()), Json.write(PartLayout.fromJson(Json.read(Json.write(layout.toJson()))).toJson()));
+		assertEquals(Json.write(layout.toJson()), Json.write(layout.copy().toJson()));
 	}
 }

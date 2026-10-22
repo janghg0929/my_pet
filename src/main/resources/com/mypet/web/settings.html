@@ -96,6 +96,8 @@
         <button class="btn btn-small btn-primary" id="part-menu-apply">적용</button>
         <button class="btn btn-small" id="part-menu-draw" data-icon="brush" title="그림판"></button>
       </div>
+      <!-- 여러 개 골랐으면 그룹으로 묶기, 그룹 부위면 좌우·상하 대칭 / 그룹 풀기 (parts-select.js 가 채운다) -->
+      <div class="menu-group" id="part-menu-group" hidden></div>
       <!-- 만든 부위만: 부위 목록(가져오기)에 보관 -->
       <div class="menu-buttons menu-save" id="part-menu-save">
         <button class="btn btn-small" id="part-menu-save-now" title="지금 모습을 부위 목록에 저장">저장</button>
@@ -243,6 +245,7 @@
   <script src="bit.js"></script>
   <script src="painter.js"></script>
   <script src="parts-editor.js"></script>
+  <script src="parts-select.js"></script>
   <script src="timeline-editor.js"></script>
   <script src="settings.js"></script>
 </body>

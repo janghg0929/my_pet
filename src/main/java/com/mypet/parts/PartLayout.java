@@ -22,7 +22,7 @@ public final class PartLayout {
 	public static final List<String> KEYS = List.of(BODY, LEFT_ARM, RIGHT_ARM, LEFT_LEG, RIGHT_LEG, EYES);
 	/** 사용자가 만든 부위 이름 앞머리, 최대 개수. */
 	public static final String CUSTOM_PREFIX = "c_";
-	public static final int MAX_CUSTOM = 20;
+	public static final int MAX_CUSTOM = 40;
 	/** 새로 만든 부위의 크기 (가로·세로 px). */
 	public static final int CUSTOM_SIZE = 24;
 	public static final int MAX_NAME_LENGTH = 20;
@@ -73,6 +73,8 @@ public final class PartLayout {
 		public String image;
 		/** 사진을 좌우로 뒤집어 그릴지 (좌우 맞추기로 반대쪽에 복사된 사진). */
 		public boolean flip;
+		/** 사진을 위아래로 뒤집어 그릴지 (그룹의 상하 대칭으로 복사된 사진). */
+		public boolean flipY;
 		/** 회전 (도, 시계 방향, -179..180). 부위 가운데를 기준으로 돌린다. */
 		public int rotation;
 		/** 그림판 해상도 (가로·세로 칸 수, 0 이면 부위 크기). 부위를 우클릭해서 정한다. */
@@ -99,6 +101,7 @@ public final class PartLayout {
 			copy.shape = shape;
 			copy.image = image;
 			copy.flip = flip;
+			copy.flipY = flipY;
 			copy.rotation = rotation;
 			copy.resW = resW;
 			copy.resH = resH;
@@ -170,6 +173,11 @@ public final class PartLayout {
 	public boolean symmetric = true;
 	/** 고급: 상황별 시간 막대 애니메이션 (키프레임). */
 	public PartTimeline timeline = new PartTimeline();
+	/**
+	 * 부위 그룹 (모습 꾸미기에서 여러 부위를 묶은 것): {id, members, mirrorX, mirrorY, pairsX, pairsY}.
+	 * 대칭(좌우·상하)은 설정 화면(parts-editor.js)이 고칠 때 맞춰 두고, 여기서는 그대로 저장만 한다.
+	 */
+	public List<Map<String, Object>> groups = new java.util.ArrayList<>();
 
 	private PartLayout() {
 	}
@@ -196,6 +204,7 @@ public final class PartLayout {
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			copy.parts.put(entry.getKey(), entry.getValue().copy());
 		}
+		copy.groups = sanitizeGroups(groups, copy.parts.keySet());
 		return copy;
 	}
 
@@ -311,6 +320,7 @@ public final class PartLayout {
 		target.x = doubledCenter - (source.x + source.w);
 		target.image = source.image;
 		target.flip = source.image != null && !source.flip;
+		target.flipY = source.image != null && source.flipY;
 		target.rotation = normalizeRotation(-source.rotation);
 		target.resW = source.resW;
 		target.resH = source.resH;
@@ -498,6 +508,7 @@ public final class PartLayout {
 		Map<String, Object> root = new LinkedHashMap<>();
 		root.put("symmetric", symmetric);
 		root.put("timeline", timeline.toJson());
+		root.put("groups", sanitizeGroups(groups, parts.keySet()));
 		for (Map.Entry<String, Part> entry : parts.entrySet()) {
 			Part part = entry.getValue();
 			Map<String, Object> item = new LinkedHashMap<>();
@@ -526,6 +537,7 @@ public final class PartLayout {
 			} else {
 				item.put("image", part.image);
 				item.put("flip", part.flip);
+				item.put("flipY", part.flipY);
 			}
 			root.put(entry.getKey(), item);
 		}
@@ -599,9 +611,64 @@ public final class PartLayout {
 			} else {
 				part.image = safeFileName(item.get("image"));
 				part.flip = part.image != null && Boolean.TRUE.equals(item.get("flip"));
+				part.flipY = part.image != null && Boolean.TRUE.equals(item.get("flipY"));
 			}
 		}
+		layout.groups = sanitizeGroups(root.get("groups"), layout.parts.keySet());
 		return layout;
+	}
+
+	/**
+	 * 그룹을 읽는다: 있는 부위만, 부위는 한 그룹에만, 두 개 이상일 때만 그룹. 대칭 짝(pairs)은 같은 그룹 부위끼리만.
+	 */
+	static List<Map<String, Object>> sanitizeGroups(Object value, Set<String> validKeys) {
+		List<Map<String, Object>> groups = new java.util.ArrayList<>();
+		if (!(value instanceof List<?> list)) {
+			return groups;
+		}
+		Set<String> used = new java.util.HashSet<>();
+		Set<String> ids = new java.util.HashSet<>();
+		for (Object rawGroup : list) {
+			if (!(rawGroup instanceof Map<?, ?> group) || !(group.get("members") instanceof List<?> rawMembers)) {
+				continue;
+			}
+			List<String> members = new java.util.ArrayList<>();
+			for (Object member : rawMembers) {
+				if (member instanceof String key && validKeys.contains(key) && !used.contains(key) && !members.contains(key)) {
+					members.add(key);
+				}
+			}
+			if (members.size() < 2) {
+				continue;
+			}
+			used.addAll(members);
+			String id = group.get("id") instanceof String text && text.matches("[A-Za-z0-9_]{1,24}") && !ids.contains(text)
+				? text : "g_" + (groups.size() + 1) + "_" + Integer.toHexString(members.hashCode());
+			ids.add(id);
+			Map<String, Object> clean = new LinkedHashMap<>();
+			clean.put("id", id);
+			clean.put("members", members);
+			clean.put("mirrorX", Boolean.TRUE.equals(group.get("mirrorX")));
+			clean.put("mirrorY", Boolean.TRUE.equals(group.get("mirrorY")));
+			clean.put("pairsX", sanitizePairs(group.get("pairsX"), members));
+			clean.put("pairsY", sanitizePairs(group.get("pairsY"), members));
+			groups.add(clean);
+		}
+		return groups;
+	}
+
+	private static List<List<String>> sanitizePairs(Object value, List<String> members) {
+		List<List<String>> pairs = new java.util.ArrayList<>();
+		if (!(value instanceof List<?> list)) {
+			return pairs;
+		}
+		for (Object rawPair : list) {
+			if (rawPair instanceof List<?> pair && pair.size() == 2 && pair.get(0) instanceof String a && pair.get(1) instanceof String b
+				&& !a.equals(b) && members.contains(a) && members.contains(b)) {
+				pairs.add(List.of(a, b));
+			}
+		}
+		return pairs;
 	}
 
 	private static int clampInt(Object value, int fallback, int min, int max) {
