@@ -302,6 +302,29 @@ class WebSettingsPreviewTest {
 			&& withTail.get(tailKey).w == 24 && withTail.get(tailKey).h == 24,
 			"새 부위 만들기");
 		assertTrue(settings[0].dialog().getHeight() == partsHeight, "부위를 더해도 창 크기 그대로: " + settings[0].dialog().getHeight());
+		// 만든 부위 우클릭 → [다른 이름으로 저장] → "꼬리 2" 복사본이 부위 목록에 (화면에는 안 나옴), 기본 부위 메뉴에는 저장 칸 없음
+		String bodySave = evalScript(settings[0], "var b = document.querySelector('#parts-tabs [data-part=body]'); var r = b.getBoundingClientRect();"
+			+ " b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 2, clientX: r.left + 5, clientY: r.top + 5 }));"
+			+ " var h = String(document.getElementById('part-menu-save').hidden); window.bitPartsEditor.closePartMenu(); h");
+		String tailSave = evalScript(settings[0], "var b = document.querySelector('#parts-tabs [data-part=" + tailKey + "]'); var r = b.getBoundingClientRect();"
+			+ " b.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, button: 2, clientX: r.left + 5, clientY: r.top + 5 }));"
+			+ " String(document.getElementById('part-menu-save').hidden)");
+		Thread.sleep(300);
+		snapshot(settings[0], new File(out, "web-parts-save-menu.png"));
+		askedText.set("꼬리 2");
+		runScript(settings[0], "document.getElementById('part-menu-save-as').click()");
+		Thread.sleep(500);
+		com.mypet.parts.PartLayout withCopy = com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get()));
+		String copyKey = withCopy.customKeys().stream().filter(k -> "꼬리 2".equals(withCopy.nameOf(k))).findFirst().orElse(null);
+		String saveStatus = evalScript(settings[0], "document.getElementById('parts-status').textContent");
+		System.out.println("save menu: body hidden=" + bodySave + " tail hidden=" + tailSave + " copy=" + copyKey + " status=" + saveStatus);
+		assertTrue("true".equals(bodySave) && "false".equals(tailSave) && copyKey != null && !withCopy.get(copyKey).visible
+			&& withCopy.get(copyKey).w == withCopy.get(tailKey).w && withCopy.get(tailKey).visible && saveStatus.contains("꼬리 2"),
+			"다른 이름으로 저장: " + copyKey + " " + saveStatus);
+		// 복사본은 지워 둔다 (아래 시험은 꼬리 하나만 있다고 본다)
+		runScript(settings[0], "window.bitPartsEditor.deletePart('" + copyKey + "'); document.getElementById('parts-status').textContent = '';");
+		Thread.sleep(400);
+		assertTrue(com.mypet.parts.PartLayout.fromJson(com.mypet.settings.Json.read(sentParts.get())).customKeys().size() == 1, "복사본 지우기");
 		// [빼기] → 가져오기 목록에 [가져오기] → 다시 넣기, ⋮ → 이름 수정 → 삭제(두 번)
 		runScript(settings[0], "document.getElementById('parts-remove').click()");
 		Thread.sleep(400);

@@ -617,6 +617,17 @@ button {
   gap: 6px;
 }
 
+/* 만든 부위: 저장 / 다른 이름으로 저장 (점선 아래 한 줄) */
+.part-menu .menu-save {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--muted);
+}
+
+.part-menu .menu-save[hidden] {
+  display: none;
+}
+
 .part-menu .btn-small {
   height: 26px;
   padding: 0 8px;

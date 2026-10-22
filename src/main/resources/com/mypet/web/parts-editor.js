@@ -387,6 +387,28 @@
         self.openPainter(self.advanced() ? "key" : "part");
       }
     });
+    // 만든 부위: 저장 (지금 모습을 바로 저장) / 다른 이름으로 저장 (복사본을 부위 목록에 보관)
+    document.getElementById("part-menu-save-now").addEventListener("click", function () {
+      var key = self.menuKey;
+      self.closePartMenu();
+      if (self.layout[key]) {
+        self.commit(0);
+        self.setStatus("'" + window.BitView.partName(self.layout, key) + "' 부위를 저장했어요");
+      }
+    });
+    document.getElementById("part-menu-save-as").addEventListener("click", function () {
+      var key = self.menuKey;
+      self.closePartMenu();
+      if (!self.layout[key]) {
+        return;
+      }
+      if (window.BitView.customKeys(self.layout).length >= MAX_CUSTOM) {
+        self.setStatus("만든 부위는 " + MAX_CUSTOM + "개까지 보관할 수 있어요");
+        return;
+      }
+      self.pendingText = { action: "saveAs", key: key };
+      self.send("askText", "다른 이름으로 저장", window.BitView.partName(self.layout, key) + " 2");
+    });
     // 메뉴 밖을 누르면 닫는다
     document.addEventListener("mousedown", function (event) {
       if (self.partMenuOpen() && !menu.contains(event.target)) {
@@ -411,7 +433,8 @@
     }
     this.menuKey = key;
     var res = this.resolutionOf(part);
-    document.getElementById("part-menu-name").textContent = window.BitView.partName(this.layout, key) + " · 그림판 해상도";
+    document.getElementById("part-menu-name").textContent = window.BitView.partName(this.layout, key);
+    document.getElementById("part-menu-save").hidden = !window.BitView.isCustom(key);
     document.getElementById("part-menu-w").value = res.w;
     document.getElementById("part-menu-h").value = res.h;
     this.refreshPartMenuHint();
@@ -698,8 +721,48 @@
       document.getElementById("parts-add-panel").hidden = true;
     } else if (pending.action === "rename" && this.layout[pending.key]) {
       this.layout[pending.key].name = name;
+    } else if (pending.action === "saveAs" && this.layout[pending.key]) {
+      this.duplicatePart(pending.key, name);
+      return;
     }
     this.afterPartsChanged();
+  };
+
+  /**
+   * 다른 이름으로 저장: 부위를 통째로(그림·크기·움직임·시간 막대 키까지) 새 이름으로 복사해서 부위 목록에 보관한다.
+   * 복사본은 화면에는 넣지 않는다 (가져오기에서 꺼낸다).
+   */
+  PartsEditor.prototype.duplicatePart = function (key, name) {
+    if (window.BitView.customKeys(this.layout).length >= MAX_CUSTOM) {
+      this.setStatus("만든 부위는 " + MAX_CUSTOM + "개까지 보관할 수 있어요");
+      return null;
+    }
+    var copyKey;
+    do {
+      copyKey = "c_" + Math.random().toString(36).slice(2, 10).replace(/[^a-z0-9]/g, "a");
+    } while (this.layout[copyKey]);
+    var copy = JSON.parse(JSON.stringify(this.layout[key]));
+    copy.name = name;
+    copy.visible = false;
+    this.layout[copyKey] = window.BitView.normalizePart(copyKey, copy);
+    var timeline = this.layout.timeline;
+    window.BitView.STATES.forEach(function (state) {
+      var clip = timeline && timeline[state];
+      if (clip && clip.tracks[key] && clip.tracks[key].length) {
+        clip.tracks[copyKey] = JSON.parse(JSON.stringify(clip.tracks[key]));
+      }
+    });
+    this.afterPartsChanged();
+    this.setStatus("'" + name + "' 이름으로 부위 목록에 저장했어요 (＋ 부위 → 가져오기)");
+    return copyKey;
+  };
+
+  /** 모습 꾸미기 아래 알림 줄. */
+  PartsEditor.prototype.setStatus = function (text) {
+    var status = document.getElementById("parts-status");
+    if (status) {
+      status.textContent = text;
+    }
   };
 
   /** 부위를 넣고 빼고 지운 뒤: 화면을 다시 그리고 저장. */
