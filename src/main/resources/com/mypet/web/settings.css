@@ -328,17 +328,6 @@ button {
   padding: 0;
 }
 
-/* 미리보기 안 왼쪽 위의 도움말 한 줄 */
-.stage-hint {
-  position: absolute;
-  left: 6px;
-  top: 4px;
-  right: 6px;
-  color: var(--muted);
-  font-size: 12px;
-  pointer-events: none;
-}
-
 /* [일반] [고급] */
 .level-tabs {
   grid-template-columns: 1fr 1fr;
@@ -827,7 +816,6 @@ button {
 }
 
 /* 길어도 한 줄 (줄 수가 바뀌어 창 크기가 흔들리지 않게) */
-.stage-hint,
 #parts-status {
   overflow: hidden;
   white-space: nowrap;

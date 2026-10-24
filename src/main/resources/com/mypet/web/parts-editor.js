@@ -1041,19 +1041,6 @@
     var limb = !!MIRROR[this.selected];
     setOff("motion-alternate-row", !(limb && this.layout.symmetric));
     document.getElementById("motion-alternate").checked = !!m.alternate;
-
-    var subtitle = document.getElementById("parts-subtitle");
-    var hint;
-    if (advanced) {
-      hint = "시간을 고르고 부위를 끌거나 돌리면 ◆ 키가 생겨요";
-    } else if (shape) {
-      hint = "끌어서 옮기기 · 빈 곳 끌기: 여러 개 고르기 · Shift+끌기: 화면 옮기기";
-    } else if (always) {
-      hint = "언제나 하는 움직임 · 자세는 다른 상황에서 잡아요";
-    } else {
-      hint = "'" + STATE_LABELS[this.animState] + "' 자세: 끌거나 돌려서 잡아요";
-    }
-    window.BitView.setText(subtitle, hint);
   };
 
   /** 화면에 보일 때 움직임 화면이면 미리보기를 움직인다. */
