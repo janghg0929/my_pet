@@ -36,12 +36,9 @@ public final class LegacyLauncherNotice {
 		return running.equals(installed);
 	}
 
+	/** 윈도우 경로 비교용: 구분자는 \ 로, 대소문자 무시 (실행 경로는 늘 전체 경로라 그대로 비교한다). */
 	private static String normalize(String path) {
-		try {
-			return Path.of(path).toAbsolutePath().normalize().toString().toLowerCase(Locale.ROOT);
-		} catch (RuntimeException e) {
-			return path.toLowerCase(Locale.ROOT);
-		}
+		return path.replace('/', '\\').toLowerCase(Locale.ROOT);
 	}
 
 	/** 필요하면 공지를 띄운다 (Swing 스레드에서 부를 것). 비트는 그대로 돌아다닌다 (모달 아님). */
